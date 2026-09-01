@@ -29,8 +29,7 @@
 -dontwarn com.google.re2j.**
 -dontobfuscate
 
-# Ktor 在 Android 上引用了仅 JVM 可用的 java.lang.management 类（IntellijIdeaDebugDetector）
-# Android 不包含这些类，需要告知 R8 忽略
+# Ktor 鍦?Android 涓婂紩鐢ㄤ簡浠?JVM 鍙敤鐨?java.lang.management 绫伙紙IntellijIdeaDebugDetector锛?# Android 涓嶅寘鍚繖浜涚被锛岄渶瑕佸憡鐭?R8 蹇界暐
 -dontwarn java.lang.management.ManagementFactory
 -dontwarn java.lang.management.RuntimeMXBean
 
@@ -45,3 +44,6 @@
 -keepattributes Signature, InnerClasses, EnclosingMethod
 -keep class com.fasterxml.jackson.** { *; }
 -keep class com.auth0.jwt.** { *; }
+# JSch uses reflection to load its JCE providers - R8 would strip them without these rules  
+-keep class com.jcraft.jsch.** { *; }  
+-dontwarn com.jcraft.jsch.**  
