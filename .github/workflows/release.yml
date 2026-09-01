@@ -30,7 +30,7 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: $(( runner.os ))-gradle-$(( hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') ))
+          key: gradle-cache-${{ runner.os }}-${{ hashFiles('**/*.gradle*') }}
       - name: Gradle Build Debug
         run: |
           chmod +x gradlew
