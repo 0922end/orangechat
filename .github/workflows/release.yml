@@ -47,9 +47,12 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - name: Release
         if: success()
-        with:
-          name: debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create v1.0.0-sshfix \
+            --title "SSH修复测试版" \
+            --notes "基于橘瓣原版，仅修复SSH通道(proguard添加JSch keep规则)" \
+            app/build/outputs/apk/debug/*.apk
