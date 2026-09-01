@@ -13,13 +13,24 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Set up Node and Pnpm
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Enable corepack and install pnpm
+        run: |
+          corepack enable pnpm
+          pnpm --version
+          cd web-ui
+          pnpm install --frozen-lockfile
       - name: Gradle cache
         uses: actions/cache@v4
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key: $(( runner.os ))-gradle-$(( hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') ))
       - name: Gradle Build Debug
         run: |
           chmod +x gradlew
