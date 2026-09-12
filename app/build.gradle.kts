@@ -16,7 +16,7 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "me.rerere.orangechat"
+        applicationId = "com.elian.app"
         minSdk = 26
         targetSdk = 37
         versionCode = 159
@@ -297,6 +297,8 @@ dependencies {
     implementation(libs.barcode.scanning)
     implementation(libs.text.recognition)
     implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
 
     // Room
     implementation(libs.androidx.room.runtime)
