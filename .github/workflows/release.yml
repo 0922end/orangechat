@@ -24,12 +24,12 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: 17
       - name: Set up Node and Pnpm
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: 22
+          cache: npm
       - name: Enable corepack and install pnpm
         run: |
           corepack enable pnpm
@@ -42,17 +42,13 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-cache-${{ runner.os }}-${{ hashFiles('**/*.gradle*') }}
+          key: gradle-cache-${{{{ runner.os }}}}-${{{{ hashFiles('**/*.gradle*') }}}}
       - name: Gradle Build Debug
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug
-      - name: Release
-        if: success()
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release create v1.0.0-sshfix \
-            --title "SSH修复测试版" \
-            --notes "基于橘瓣原版，仅修复SSH通道(proguard添加JSch keep规则)" \
-            app/build/outputs/apk/debug/*.apk
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: elian-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
