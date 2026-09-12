@@ -32,6 +32,9 @@ data class VoiceCallUiState(
     val amplitudes: List<Float> = emptyList(),
     val isMuted: Boolean = false,
     val autoSendEnabled: Boolean = true,
+    val isVideoEnabled: Boolean = false,
+    val isFrontCamera: Boolean = true,
+    val lastObservation: String = "",
 ) {
     val isActive: Boolean
         get() = status != VoiceCallStatus.Idle
