@@ -58,6 +58,10 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Mic01
 import me.rerere.hugeicons.stroke.MicOff01
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.VideocamOff
+import androidx.compose.material.icons.filled.Cameraswitch
 import me.rerere.rikkahub.service.VoiceCallService
 import me.rerere.rikkahub.ui.components.ui.permission.PermissionRecordAudio
 import me.rerere.rikkahub.ui.components.ui.permission.rememberPermissionState
@@ -268,12 +272,13 @@ fun VoiceCallPage(
             // 底部: 只有两个按钮 (ChatGPT 风格)
             // 左: 静音, 右: 挂断.
             Row(
-                horizontalArrangement = Arrangement.spacedBy(56.dp),
+                horizontalArrangement = Arrangement.spacedBy(32.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(bottom = 64.dp)
             ) {
-                // 静音按钮
                 val canControl = boundService != null
+
+                // 静音按钮
                 ControlButton(
                     icon = if (uiState.isMuted) HugeIcons.MicOff01 else HugeIcons.Mic01,
                     contentDescription = "静音",
@@ -286,8 +291,41 @@ fun VoiceCallPage(
                         Color.White.copy(alpha = 0.15f)
                     },
                     iconTint = Color.White,
-                    enabled = canControl
+                    enabled = canControl,
+                    size = 52.dp
                 )
+
+                // 视频开关按钮
+                ControlButton(
+                    icon = if (uiState.isVideoEnabled) Icons.Filled.Videocam else Icons.Filled.VideocamOff,
+                    contentDescription = "视频",
+                    onClick = {
+                        boundService?.toggleVideo()
+                    },
+                    backgroundColor = if (uiState.isVideoEnabled) {
+                        Color(0xFF4CAF50).copy(alpha = 0.6f)
+                    } else {
+                        Color.White.copy(alpha = 0.15f)
+                    },
+                    iconTint = Color.White,
+                    enabled = canControl,
+                    size = 52.dp
+                )
+
+                // 翻转摄像头按钮 (仅视频开启时显示)
+                if (uiState.isVideoEnabled) {
+                    ControlButton(
+                        icon = Icons.Filled.Cameraswitch,
+                        contentDescription = "翻转摄像头",
+                        onClick = {
+                            boundService?.flipCamera()
+                        },
+                        backgroundColor = Color.White.copy(alpha = 0.15f),
+                        iconTint = Color.White,
+                        enabled = canControl,
+                        size = 52.dp
+                    )
+                }
 
                 // 挂断按钮
                 ControlButton(
@@ -299,7 +337,8 @@ fun VoiceCallPage(
                     },
                     backgroundColor = MaterialTheme.colorScheme.error,
                     iconTint = Color.White,
-                    enabled = true // 挂断始终可点, 即使 service 还没绑定
+                    enabled = true,
+                    size = 52.dp
                 )
             }
         }
