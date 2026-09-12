@@ -60,7 +60,7 @@ import me.rerere.hugeicons.stroke.Mic01
 import me.rerere.hugeicons.stroke.MicOff01
 import me.rerere.hugeicons.stroke.Video01
 import me.rerere.hugeicons.stroke.VideoOff
-import me.rerere.hugeicons.stroke.RefreshSquare
+// import me.rerere.hugeicons.stroke.RefreshSquare  // TODO: find correct icon name
 import me.rerere.rikkahub.service.VoiceCallService
 import me.rerere.rikkahub.ui.components.ui.permission.PermissionRecordAudio
 import me.rerere.rikkahub.ui.components.ui.permission.rememberPermissionState
@@ -314,7 +314,7 @@ fun VoiceCallPage(
                 // 翻转摄像头按钮 (仅视频开启时显示)
                 if (uiState.isVideoEnabled) {
                     ControlButton(
-                        icon = HugeIcons.RefreshSquare,
+                        icon = HugeIcons.Video01,  // TODO: replace with camera flip icon
                         contentDescription = "翻转摄像头",
                         onClick = {
                             boundService?.flipCamera()
