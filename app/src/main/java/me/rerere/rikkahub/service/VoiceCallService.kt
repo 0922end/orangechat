@@ -44,8 +44,27 @@ import me.rerere.rikkahub.ui.hooks.createCustomTtsState
 import me.rerere.rikkahub.ui.pages.voice.VoiceCallStatus
 import me.rerere.rikkahub.ui.pages.voice.VoiceCallUiState
 import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.ImageFormat
+import android.graphics.Rect
+import android.graphics.YuvImage
+import android.util.Base64
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.Lifecycle
+import java.io.ByteArrayOutputStream
 import kotlin.uuid.Uuid
 
 private const val TAG = "VoiceCallService"
@@ -98,6 +117,18 @@ class VoiceCallService : Service(), KoinComponent {
 
     // 静音状态 (独立于 _uiState.isMuted, 检测循环里直接读这个字段更快)
     private var isMuted: Boolean = false
+
+    // ==================== 视频通话相关 ====================
+    private var videoWebSocket: WebSocket? = null
+    private var cameraProvider: ProcessCameraProvider? = null
+    private var frameJob: Job? = null
+    private var isVideoEnabled: Boolean = false
+    private var isFrontCamera: Boolean = true
+    private val serviceLifecycleOwner = ServiceLifecycleOwner()
+
+    // pai-voice 服务器地址 (暂时硬编码, 以后移到设置页)
+    private val paiVoiceWsUrl: String = "ws://101.42.108.110:8780"
+    private val paiVoiceToken: String = "elian2026"
 
     companion object {
         private val _activeConversationId = MutableStateFlow<String?>(null)
@@ -189,7 +220,7 @@ class VoiceCallService : Service(), KoinComponent {
                 this,
                 NOTIFICATION_ID,
                 buildNotification(_uiState.value),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
             )
         } catch (e: Exception) {
             Log.e(TAG, "startForeground 失败, conversationId=$conversationId", e)
@@ -704,6 +735,202 @@ class VoiceCallService : Service(), KoinComponent {
         _uiState.update { it.copy(autoSendEnabled = !it.autoSendEnabled) }
     }
 
+    // ==================== 视频通话方法 ====================
+
+    /**
+     * Service 级 LifecycleOwner, 供 CameraX bindToLifecycle 用.
+     */
+    class ServiceLifecycleOwner : LifecycleOwner {
+        private val registry = LifecycleRegistry(this)
+        override val lifecycle: Lifecycle get() = registry
+        fun start() {
+            registry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
+            registry.handleLifecycleEvent(Lifecycle.Event.ON_START)
+            registry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+        }
+        fun stop() {
+            registry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
+            registry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
+            registry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+        }
+    }
+
+    /**
+     * 开关视频. 从 VoiceCallPage 的按钮调用.
+     */
+    fun toggleVideo() {
+        isVideoEnabled = !isVideoEnabled
+        _uiState.update { it.copy(isVideoEnabled = isVideoEnabled) }
+        if (isVideoEnabled) {
+            connectVideoWebSocket()
+            startCameraCapture()
+        } else {
+            stopCamera()
+            videoWebSocket?.close(1000, "video off")
+            videoWebSocket = null
+        }
+    }
+
+    /**
+     * 翻转前后摄像头.
+     */
+    fun flipCamera() {
+        isFrontCamera = !isFrontCamera
+        _uiState.update { it.copy(isFrontCamera = isFrontCamera) }
+        if (isVideoEnabled) {
+            stopCamera()
+            startCameraCapture()
+        }
+    }
+
+    /**
+     * 连接 pai-voice WebSocket 服务端.
+     */
+    private fun connectVideoWebSocket() {
+        videoWebSocket?.close(1000, "reconnect")
+        val url = "$paiVoiceWsUrl?token=$paiVoiceToken"
+        val request = Request.Builder().url(url).build()
+        videoWebSocket = httpClient.newWebSocket(request, object : WebSocketListener() {
+            override fun onOpen(ws: WebSocket, response: Response) {
+                Log.d(TAG, "Video WebSocket connected")
+                val startMsg = org.json.JSONObject().apply {
+                    put("type", "start")
+                    put("video", true)
+                    put("token", paiVoiceToken)
+                }.toString()
+                ws.send(startMsg)
+                // 告诉服务端开启视频
+                val videoMsg = org.json.JSONObject().apply {
+                    put("type", "video")
+                    put("on", true)
+                }.toString()
+                ws.send(videoMsg)
+            }
+
+            override fun onMessage(ws: WebSocket, text: String) {
+                try {
+                    val json = org.json.JSONObject(text)
+                    when (json.optString("type")) {
+                        "observation" -> {
+                            val content = json.optString("content", "")
+                            if (content.isNotBlank()) {
+                                _uiState.update { it.copy(lastObservation = content) }
+                                Log.d(TAG, "Vision observation: $content")
+                            }
+                        }
+                        "error" -> {
+                            Log.e(TAG, "Video WS error: ${json.optString("error")}")
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Video WS message parse error", e)
+                }
+            }
+
+            override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
+                Log.e(TAG, "Video WebSocket failed", t)
+            }
+
+            override fun onClosed(ws: WebSocket, code: Int, reason: String) {
+                Log.d(TAG, "Video WebSocket closed: $code $reason")
+            }
+        })
+    }
+
+    /**
+     * 启动 CameraX 采集, 每 5 秒抽一帧 JPEG 发给 pai-voice.
+     */
+    private fun startCameraCapture() {
+        serviceScope.launch(Dispatchers.Main) {
+            try {
+                val cameraProviderFuture = ProcessCameraProvider.getInstance(applicationContext)
+                val provider = cameraProviderFuture.get()
+                cameraProvider = provider
+
+                val cameraSelector = if (isFrontCamera) {
+                    CameraSelector.DEFAULT_FRONT_CAMERA
+                } else {
+                    CameraSelector.DEFAULT_BACK_CAMERA
+                }
+
+                val imageAnalysis = ImageAnalysis.Builder()
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .build()
+
+                imageAnalysis.setAnalyzer(java.util.concurrent.Executors.newSingleThreadExecutor()) { imageProxy ->
+                    // 每 5 秒才处理一帧
+                    // 实际节流在 frameJob 里做
+                    sendFrameToServer(imageProxy)
+                    imageProxy.close()
+                }
+
+                provider.unbindAll()
+                serviceLifecycleOwner.start()
+                provider.bindToLifecycle(serviceLifecycleOwner, cameraSelector, imageAnalysis)
+
+                // 启动帧节流: 每5秒发一帧
+                frameJob?.cancel()
+                frameJob = serviceScope.launch {
+                    while (isVideoEnabled) {
+                        delay(5000)
+                    }
+                }
+
+                Log.d(TAG, "Camera capture started, front=$isFrontCamera")
+            } catch (e: Exception) {
+                Log.e(TAG, "Camera start failed", e)
+                _uiState.update { it.copy(errorMessage = "摄像头启动失败: ${e.message}") }
+            }
+        }
+    }
+
+    /**
+     * 将 ImageProxy 转为 JPEG 并通过 WebSocket 发送.
+     */
+    @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
+    private fun sendFrameToServer(imageProxy: ImageProxy) {
+        val ws = videoWebSocket ?: return
+        try {
+            val image = imageProxy.image ?: return
+            val yBuffer = image.planes[0].buffer
+            val uBuffer = image.planes[1].buffer
+            val vBuffer = image.planes[2].buffer
+            val ySize = yBuffer.remaining()
+            val uSize = uBuffer.remaining()
+            val vSize = vBuffer.remaining()
+            val nv21 = ByteArray(ySize + uSize + vSize)
+            yBuffer.get(nv21, 0, ySize)
+            vBuffer.get(nv21, ySize, vSize)
+            uBuffer.get(nv21, ySize + vSize, uSize)
+
+            val yuvImage = YuvImage(nv21, ImageFormat.NV21, imageProxy.width, imageProxy.height, null)
+            val out = ByteArrayOutputStream()
+            yuvImage.compressToJpeg(Rect(0, 0, imageProxy.width, imageProxy.height), 60, out)
+            val jpegBytes = out.toByteArray()
+            val b64 = Base64.encodeToString(jpegBytes, Base64.NO_WRAP)
+
+            val frameMsg = org.json.JSONObject().apply {
+                put("type", "frame")
+                put("data", b64)
+                put("ts", System.currentTimeMillis())
+            }.toString()
+            ws.send(frameMsg)
+        } catch (e: Exception) {
+            Log.e(TAG, "sendFrame error", e)
+        }
+    }
+
+    /**
+     * 停止摄像头采集.
+     */
+    private fun stopCamera() {
+        frameJob?.cancel()
+        cameraProvider?.unbindAll()
+        serviceLifecycleOwner.stop()
+        cameraProvider = null
+        Log.d(TAG, "Camera stopped")
+    }
+
     /**
      * 挂断 / 结束通话.
      * 额外复位 _activeConversationId 和移除前台通知.
@@ -716,6 +943,11 @@ class VoiceCallService : Service(), KoinComponent {
         interruptDetectJob?.cancel()
         asr.stop()
         tts.stop()
+        // 清理视频通话
+        stopCamera()
+        videoWebSocket?.close(1000, "call ended")
+        videoWebSocket = null
+        isVideoEnabled = false
         _uiState.update {
             it.copy(status = VoiceCallStatus.Idle)
         }
