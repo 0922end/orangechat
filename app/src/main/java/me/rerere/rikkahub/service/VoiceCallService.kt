@@ -124,7 +124,7 @@ class VoiceCallService : Service(), KoinComponent {
     private var frameJob: Job? = null
     private var isVideoEnabled: Boolean = false
     private var isFrontCamera: Boolean = true
-    private val serviceLifecycleOwner = ServiceLifecycleOwner()
+    private var serviceLifecycleOwner: ServiceLifecycleOwner? = null
 
     // pai-voice 服务器地址 (暂时硬编码, 以后移到设置页)
     private val paiVoiceWsUrl: String = "ws://101.42.108.110:8780"
@@ -865,8 +865,10 @@ class VoiceCallService : Service(), KoinComponent {
                 }
 
                 provider.unbindAll()
-                serviceLifecycleOwner.start()
-                provider.bindToLifecycle(serviceLifecycleOwner, cameraSelector, imageAnalysis)
+                val lifecycleOwner = ServiceLifecycleOwner()
+                serviceLifecycleOwner = lifecycleOwner
+                lifecycleOwner.start()
+                provider.bindToLifecycle(lifecycleOwner, cameraSelector, imageAnalysis)
 
                 // 启动帧节流: 每5秒发一帧
                 frameJob?.cancel()
@@ -926,7 +928,8 @@ class VoiceCallService : Service(), KoinComponent {
     private fun stopCamera() {
         frameJob?.cancel()
         cameraProvider?.unbindAll()
-        serviceLifecycleOwner.stop()
+        serviceLifecycleOwner?.stop()
+        serviceLifecycleOwner = null
         cameraProvider = null
         Log.d(TAG, "Camera stopped")
     }
