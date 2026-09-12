@@ -58,10 +58,9 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Mic01
 import me.rerere.hugeicons.stroke.MicOff01
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Videocam
-import androidx.compose.material.icons.filled.VideocamOff
-import androidx.compose.material.icons.filled.Cameraswitch
+import me.rerere.hugeicons.stroke.Video01
+import me.rerere.hugeicons.stroke.VideoOff
+import me.rerere.hugeicons.stroke.RefreshSquare
 import me.rerere.rikkahub.service.VoiceCallService
 import me.rerere.rikkahub.ui.components.ui.permission.PermissionRecordAudio
 import me.rerere.rikkahub.ui.components.ui.permission.rememberPermissionState
@@ -297,7 +296,7 @@ fun VoiceCallPage(
 
                 // 视频开关按钮
                 ControlButton(
-                    icon = if (uiState.isVideoEnabled) Icons.Filled.Videocam else Icons.Filled.VideocamOff,
+                    icon = if (uiState.isVideoEnabled) HugeIcons.Video01 else HugeIcons.VideoOff,
                     contentDescription = "视频",
                     onClick = {
                         boundService?.toggleVideo()
@@ -315,7 +314,7 @@ fun VoiceCallPage(
                 // 翻转摄像头按钮 (仅视频开启时显示)
                 if (uiState.isVideoEnabled) {
                     ControlButton(
-                        icon = Icons.Filled.Cameraswitch,
+                        icon = HugeIcons.RefreshSquare,
                         contentDescription = "翻转摄像头",
                         onClick = {
                             boundService?.flipCamera()
