@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -495,8 +496,9 @@ class ChatService(
                     Log.w(TAG, "Failed to save user message to external memory", e)
                 }
 
-                // 开始补全
+                // Debounce: wait 2s for more messages before AI responds
                 if (answer) {
+                    delay(2000L)
                     handleMessageComplete(conversationId)
                 }
 
