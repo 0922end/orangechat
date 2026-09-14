@@ -496,9 +496,7 @@ class ChatService(
                     Log.w(TAG, "Failed to save user message to external memory", e)
                 }
 
-                // Debounce: wait 2s for more messages before AI responds
                 if (answer) {
-                    delay(2000L)
                     handleMessageComplete(conversationId)
                 }
 
