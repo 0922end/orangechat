@@ -1,7 +1,7 @@
-﻿/*
+/*
  * 橘瓣 OrangeChat
- * 衍生自 RikkaHub (https://github.com/rikkahub/rikkahub)，原作者 RE
- * 本项目基于 GNU AGPL v3 开源，详见根目录 LICENSE 文件
+ * 基于 RikkaHub (https://github.com/rikkahub/rikkahub)，原作者 RE
+ * 本项目遵循 GNU AGPL v3 开源许可，见目录 LICENSE 文件
  */
 
 package me.rerere.rikkahub.data.ai.transformers
@@ -17,12 +17,12 @@ import java.time.format.TextStyle
 import java.util.Locale
 import kotlin.time.toJavaInstant
 
-private const val TIME_GAP_THRESHOLD_SECONDS = 3600L // 1 小时
+private const val TIME_GAP_THRESHOLD_SECONDS = 300L // 5 分钟
 
 /**
- * 时间提醒注入转换器
+ * 时间标签注入转换器
  *
- * 在时间间隔较大的消息之前自动注入 <time_reminder>，帮助 AI 了解对话的时间间隔
+ * 在时间上距离上次消息之前自动注入 <time_reminder>，让 AI 了解对话的时间差
  */
 object TimeReminderTransformer : InputMessageTransformer {
     override suspend fun transform(
@@ -77,9 +77,13 @@ private fun buildTimeReminderMessage(gapSeconds: Long?, instant: Instant): UIMes
 }
 
 private fun formatGap(seconds: Long): String {
-    return when {
-        seconds < 3600 -> "${seconds / 60} min"
-        seconds < 86400 -> "${seconds / 3600} h"
-        else -> "${seconds / 86400} d"
+    val days = seconds / 86400
+    val hours = (seconds % 86400) / 3600
+    val minutes = (seconds % 3600) / 60
+    return buildString {
+        if (days > 0) append("${days}天")
+        if (hours > 0) append("${hours}小时")
+        if (minutes > 0) append("${minutes}分钟")
+        if (isEmpty()) append("不到1分钟")
     }
 }
