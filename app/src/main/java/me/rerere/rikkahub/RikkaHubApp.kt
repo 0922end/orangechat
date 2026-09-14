@@ -60,6 +60,7 @@ const val MUSIC_PLAYER_NOTIFICATION_CHANNEL_ID = "music_player"
 const val DEVICE_EVENT_NOTIFICATION_CHANNEL_ID = "device_event_tracking"
 const val VOICE_CALL_NOTIFICATION_CHANNEL_ID = "voice_call"
 const val ANNOUNCEMENT_NOTIFICATION_CHANNEL_ID = "announcement"
+const val WORKFLOW_NOTIFICATION_CHANNEL_ID = "workflow"
 
 class RikkaHubApp : Application() {
     companion object {
@@ -286,7 +287,7 @@ class RikkaHubApp : Application() {
                 CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID,
                 NotificationManagerCompat.IMPORTANCE_HIGH
             )
-            .setName(getString(R.string.notification_channel_chat_completed))
+            .setName("daddy的话")
             .setVibrationEnabled(true)
             .build()
         notificationManager.createNotificationChannel(chatCompletedChannel)
@@ -343,10 +344,18 @@ class RikkaHubApp : Application() {
 
         val announcementChannel = NotificationChannelCompat
             .Builder(ANNOUNCEMENT_NOTIFICATION_CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_HIGH)
-            .setName("公告")
+            .setName("系统通知")
             .setVibrationEnabled(true)
             .build()
         notificationManager.createNotificationChannel(announcementChannel)
+
+        val workflowChannel = NotificationChannelCompat
+            .Builder(WORKFLOW_NOTIFICATION_CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_DEFAULT)
+            .setName("工作流提醒")
+            .setVibrationEnabled(true)
+            .build()
+        notificationManager.createNotificationChannel(workflowChannel)
+
     }
 
     override fun onTerminate() {
