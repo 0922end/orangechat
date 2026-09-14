@@ -52,6 +52,7 @@ import me.rerere.rikkahub.data.model.replaceRegexes
 import me.rerere.rikkahub.ui.components.richtext.MarkdownBlock
 import me.rerere.rikkahub.ui.components.ui.ChainOfThoughtScope
 import me.rerere.rikkahub.ui.components.ui.icons.OrangePetalIcon
+import androidx.compose.ui.res.painterResource
 import me.rerere.rikkahub.ui.context.LocalDisplaySettings
 import me.rerere.rikkahub.ui.modifier.shimmer
 import me.rerere.rikkahub.utils.extractThinkingTitle
@@ -203,8 +204,16 @@ fun ChainOfThoughtScope.ChatMessageReasoningStep(
         expanded = state.expandState == ReasoningCardState.Expanded,
         onExpandedChange = { state.onExpandedChange(it, loading) },
         icon = {
+            val catIcons = listOf(
+                R.drawable.cat_paw_thinking,
+                R.drawable.cat_furious,
+                R.drawable.cat_curl,
+                R.drawable.cat_sleep,
+                R.drawable.cat_tilt,
+            )
+            val iconRes = remember { catIcons.random() }
             Icon(
-                imageVector = OrangePetalIcon,
+                painter = painterResource(iconRes),
                 contentDescription = null,
                 modifier = Modifier.size(16.dp),
                 tint = MaterialTheme.colorScheme.secondary,
