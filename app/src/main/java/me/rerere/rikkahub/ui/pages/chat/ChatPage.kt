@@ -276,25 +276,10 @@ private fun ChatPageContent(
 
     TTSAutoPlay(vm = vm, setting = setting, conversation = conversation)
 
-    CompositionLocalProvider(
-        LocalEmbedWebView provides { url -> embedWebViewUrl = url }
-    ) {
     Surface(
         color = MaterialTheme.colorScheme.background,
         modifier = Modifier.fillMaxSize()
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-        // Split-screen: WebView on top when active
-        if (embedWebViewVisible) {
-            ChatEmbeddedWebView(
-                url = embedWebViewUrl ?: "",
-                onDismiss = { embedWebViewUrl = null },
-                modifier = Modifier.fillMaxWidth().weight(1f),
-            )
-        }
-        androidx.compose.foundation.layout.Box(
-            modifier = if (embedWebViewVisible) Modifier.fillMaxWidth().weight(1f) else Modifier.fillMaxSize()
-        ) {
         AssistantBackground(setting = setting)
         Scaffold(
             topBar = {
