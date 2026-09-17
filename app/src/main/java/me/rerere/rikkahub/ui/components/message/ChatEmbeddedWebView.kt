@@ -43,6 +43,7 @@ import me.rerere.rikkahub.ui.components.webview.rememberWebViewState
  * Bridge JS interface injected into every embedded web page.
  */
 class ElianBridge(
+    private val context: android.content.Context,
     private val onMessage: (String) -> Unit
 ) {
     @JavascriptInterface
@@ -50,7 +51,7 @@ class ElianBridge(
         android.os.Handler(android.os.Looper.getMainLooper()).post {
             try {
                 android.widget.Toast.makeText(
-                    me.rerere.rikkahub.RikkaHubApplication.instance,
+                    context,
                     "Bridge: ${message.take(80)}",
                     android.widget.Toast.LENGTH_SHORT
                 ).show()
