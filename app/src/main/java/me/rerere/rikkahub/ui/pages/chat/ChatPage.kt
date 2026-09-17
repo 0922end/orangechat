@@ -206,7 +206,10 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null, au
         }
 
         else -> {
+            // Track split-screen state to disable drawer gesture
+            var splitScreenActive by rememberSaveable { mutableStateOf(false) }
             ModalNavigationDrawer(
+                gesturesEnabled = !splitScreenActive,
                 drawerState = drawerState,
                 drawerContent = {
                     ChatDrawerContent(
