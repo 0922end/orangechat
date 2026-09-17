@@ -203,7 +203,13 @@ fun ChatEmbeddedWebView(
                 androidx.compose.runtime.LaunchedEffect(webViewState.isLoading) {
                     if (!webViewState.isLoading && webViewState.webView != null) {
                         webViewState.webView?.evaluateJavascript(BRIDGE_LISTENER_SCRIPT, null)
+                        onWebViewReady(webViewState.webView)
                     }
+                }
+
+                // Notify null when leaving
+                androidx.compose.runtime.DisposableEffect(Unit) {
+                    onDispose { onWebViewReady(null) }
                 }
 
                 WebView(
