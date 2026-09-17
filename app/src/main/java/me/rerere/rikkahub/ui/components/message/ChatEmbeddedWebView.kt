@@ -121,8 +121,12 @@ private val BRIDGE_LISTENER_SCRIPT = """
         } catch(ex) {}
     };
 
-    // === User Interaction Listeners ===
+    // === User Interaction Listeners (with 1s debounce) ===
+    var lastClickTime = 0;
     document.addEventListener('click', function(e) {
+        var now = Date.now();
+        if (now - lastClickTime < 1000) return;
+        lastClickTime = now;
         var el = e.target;
         var info = {
             type: 'click',
