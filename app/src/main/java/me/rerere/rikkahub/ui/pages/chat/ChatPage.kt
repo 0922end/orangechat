@@ -532,12 +532,16 @@ private fun ChatPageContent(
                 embeddedWebView = null
             },
             onBridgeMessage = { message ->
-                vm.handleMessageSend(
-                    content = listOf(
-                        UIMessagePart.Text(text = "[WebBridge] $message")
-                    ),
-                    answer = true,
-                )
+                // Only send bridge message when AI is not generating, otherwise queue it
+                if (loadingJob == null) {
+                    vm.handleMessageSend(
+                        content = listOf(
+                            UIMessagePart.Text(text = "[WebBridge] $message")
+                        ),
+                        answer = true,
+                    )
+                }
+                // Drop if AI is busy - debounce already limits to 1/sec
             },
             onWebViewReady = { wv -> embeddedWebView = wv },
         )
