@@ -488,6 +488,17 @@ sealed class UIMessagePart {
             )
         }
     }
+
+    @Serializable
+    @SerialName("web_embed")
+    data class WebEmbed(
+        val url: String,
+        val title: String? = null,
+        val description: String? = null,
+        val thumbnail: String? = null,
+        val domain: String? = null,
+        override var metadata: JsonObject? = null
+    ) : UIMessagePart()
 }
 
 /**
