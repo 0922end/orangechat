@@ -66,9 +66,10 @@ internal fun WebEmbedPreviewCard(
                     overflow = TextOverflow.Ellipsis,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
-                if (webEmbed.description != null) {
+                val desc = webEmbed.description
+                if (desc != null) {
                     Text(
-                        text = webEmbed.description,
+                        text = desc,
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
