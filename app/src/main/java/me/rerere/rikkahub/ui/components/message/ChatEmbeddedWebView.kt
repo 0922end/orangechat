@@ -1,6 +1,6 @@
 /*
  * Elian - Chat Embedded WebView
- * True split-screen: top half is WebView, bottom half is chat.
+ * Fullscreen WebView overlay with floating toolbar.
  * Auto-injects JS listener to capture user interactions.
  */
 
@@ -10,21 +10,25 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebViewClient
 import android.webkit.WebView as AndroidWebView
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -56,7 +60,6 @@ private val BRIDGE_LISTENER_SCRIPT = """
     if (window.__elianBridgeInjected) return;
     window.__elianBridgeInjected = true;
 
-    // Capture clicks
     document.addEventListener('click', function(e) {
         var el = e.target;
         var info = {
@@ -70,7 +73,6 @@ private val BRIDGE_LISTENER_SCRIPT = """
         try { ElianBridge.postMessage(JSON.stringify(info)); } catch(ex) {}
     }, true);
 
-    // Capture form submits
     document.addEventListener('submit', function(e) {
         var info = {
             type: 'submit',
@@ -80,7 +82,6 @@ private val BRIDGE_LISTENER_SCRIPT = """
         try { ElianBridge.postMessage(JSON.stringify(info)); } catch(ex) {}
     }, true);
 
-    // Capture navigation (page title changes)
     var lastTitle = document.title;
     new MutationObserver(function() {
         if (document.title !== lastTitle) {
@@ -97,7 +98,6 @@ private val BRIDGE_LISTENER_SCRIPT = """
         childList: true, subtree: true, characterData: true
     });
 
-    // Notify page loaded
     try {
         ElianBridge.postMessage(JSON.stringify({
             type: 'page_loaded',
@@ -109,8 +109,8 @@ private val BRIDGE_LISTENER_SCRIPT = """
 """.trimIndent()
 
 /**
- * Split-screen WebView panel.
- * Toolbar is z-indexed above WebView to guarantee click delivery.
+ * Fullscreen WebView with floating close button.
+ * Uses Box layout so toolbar floats ABOVE WebView - no touch event stealing.
  */
 @Composable
 fun ChatEmbeddedWebView(
@@ -119,40 +119,8 @@ fun ChatEmbeddedWebView(
     onBridgeMessage: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier) {
-        // Toolbar: elevated, z-indexed above WebView, guaranteed clickable
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .zIndex(10f)
-                .height(48.dp)
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                .padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = url,
-                style = MaterialTheme.typography.labelSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                color = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.weight(1f).padding(start = 8.dp),
-            )
-            IconButton(
-                onClick = onDismiss,
-                modifier = Modifier.size(48.dp),
-            ) {
-                Icon(
-                    imageVector = HugeIcons.Cancel01,
-                    contentDescription = "Close",
-                    modifier = Modifier.size(24.dp),
-                )
-            }
-        }
-
-        HorizontalDivider()
-
-        // WebView - normal scrolling
+    Box(modifier = modifier.background(MaterialTheme.colorScheme.background)) {
+        // WebView fills entire space
         val webViewState = rememberWebViewState(
             url = url,
             interfaces = mapOf(
@@ -163,8 +131,8 @@ fun ChatEmbeddedWebView(
         WebView(
             state = webViewState,
             modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
+                .fillMaxSize()
+                .padding(top = 48.dp),
             onCreated = { webView ->
                 webView.settings.javaScriptEnabled = true
                 webView.settings.domStorageEnabled = true
@@ -177,5 +145,45 @@ fun ChatEmbeddedWebView(
                 }
             },
         )
+
+        // Floating toolbar on top - guaranteed to receive clicks
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .zIndex(100f)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .align(Alignment.TopStart)
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = url,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = MaterialTheme.colorScheme.outline,
+                modifier = Modifier.weight(1f),
+            )
+            // Close button - large touch target
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = androidx.compose.material3.ripple(),
+                        onClick = onDismiss,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = HugeIcons.Cancel01,
+                    contentDescription = "Close",
+                    modifier = Modifier.size(24.dp),
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
     }
 }
