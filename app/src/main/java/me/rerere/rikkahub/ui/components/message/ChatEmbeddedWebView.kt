@@ -168,12 +168,8 @@ fun ChatEmbeddedWebView(
                 }
 
                 // WebView with bridge injection
-                val webViewState = rememberWebViewState(
-                    url = url,
-                    interfaces = mapOf(
-                        "ElianBridge" to ElianBridge(onBridgeMessage)
-                    ),
-                )
+                val bridge = remember { ElianBridge(onBridgeMessage) }
+                val webViewState = rememberWebViewState(url = url)
 
                 WebView(
                     state = webViewState,
@@ -184,6 +180,7 @@ fun ChatEmbeddedWebView(
                         webView.settings.javaScriptEnabled = true
                         webView.settings.domStorageEnabled = true
                         webView.settings.allowContentAccess = true
+                        webView.addJavascriptInterface(bridge, "ElianBridge")
                         webView.webViewClient = object : WebViewClient() {
                             override fun onPageFinished(view: AndroidWebView?, url: String?) {
                                 super.onPageFinished(view, url)
