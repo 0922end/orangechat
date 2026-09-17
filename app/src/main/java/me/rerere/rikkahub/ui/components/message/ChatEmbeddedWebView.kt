@@ -177,7 +177,8 @@ fun ChatEmbeddedWebView(
                 }
 
                 // WebView with bridge injection
-                val bridge = remember { ElianBridge(onBridgeMessage) }
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val bridge = remember { ElianBridge(context, onBridgeMessage) }
                 val webViewState = rememberWebViewState(url = url)
 
                 WebView(
