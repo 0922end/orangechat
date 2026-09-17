@@ -283,7 +283,7 @@ private fun ChatPageContent(
     val lastMsg = conversation.currentMessages.lastOrNull()
     androidx.compose.runtime.LaunchedEffect(lastMsg?.id, lastMsg?.parts) {
         val wv = embeddedWebView
-        if (wv != null && lastMsg != null && lastMsg.role.name.lowercase() == "assistant") {
+        if (wv != null && lastMsg != null && lastMsg.role == me.rerere.ai.core.MessageRole.ASSISTANT) {
             val textParts = lastMsg.parts.filterIsInstance<UIMessagePart.Text>()
             for (part in textParts) {
                 val regex = Regex("""\[WebAction](.*?)\[/WebAction]""", RegexOption.DOT_MATCHES_ALL)
