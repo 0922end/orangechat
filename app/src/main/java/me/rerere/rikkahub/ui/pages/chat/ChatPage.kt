@@ -536,16 +536,21 @@ private fun ChatPageContent(
                 embeddedWebView = null
             },
             onBridgeMessage = { message ->
-                // Only send bridge message when AI is not generating, otherwise queue it
-                if (loadingJob == null) {
-                    vm.handleMessageSend(
-                        content = listOf(
-                            UIMessagePart.Text(text = "[WebBridge] $message")
-                        ),
-                        answer = true,
-                    )
+                bridgeBuffer.add(message)
+                bridgeJob.value?.cancel()
+                bridgeJob.value = scope.launch {
+                    kotlinx.coroutines.delay(3000L)
+                    if (bridgeBuffer.isNotEmpty() && loadingJob == null) {
+                        val merged = bridgeBuffer.joinToString("\n")
+                        bridgeBuffer.clear()
+                        vm.handleMessageSend(
+                            content = listOf(
+                                UIMessagePart.Text(text = "[WebBridge]\n$merged")
+                            ),
+                            answer = true,
+                        )
+                    }
                 }
-                // Drop if AI is busy - debounce already limits to 1/sec
             },
             onWebViewReady = { wv -> embeddedWebView = wv },
         )
