@@ -46,7 +46,9 @@ class ElianBridge(
 ) {
     @JavascriptInterface
     fun postMessage(message: String) {
-        onMessage(message)
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            onMessage(message)
+        }
     }
 
     @JavascriptInterface
