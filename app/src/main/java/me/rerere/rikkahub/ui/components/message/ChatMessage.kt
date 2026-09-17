@@ -642,6 +642,12 @@ private fun MessagePartsBlock(
                         }
                     }
  
+                    is UIMessagePart.WebEmbed -> {
+                        WebEmbedPreviewCard(
+                            webEmbed = part,
+                        )
+                    }
+
                     else -> {
                         // Skip unknown part types (e.g., deprecated ToolCall, ToolResult, Search)
                     }
