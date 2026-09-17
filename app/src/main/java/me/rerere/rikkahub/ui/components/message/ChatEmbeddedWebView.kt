@@ -9,22 +9,25 @@ package me.rerere.rikkahub.ui.components.message
 import android.webkit.JavascriptInterface
 import android.webkit.WebViewClient
 import android.webkit.WebView as AndroidWebView
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.rikkahub.ui.components.webview.WebView
@@ -32,7 +35,6 @@ import me.rerere.rikkahub.ui.components.webview.rememberWebViewState
 
 /**
  * Bridge JS interface injected into every embedded web page.
- * Allows web pages to send messages back to the chat.
  */
 class ElianBridge(
     private val onMessage: (String) -> Unit
@@ -107,8 +109,8 @@ private val BRIDGE_LISTENER_SCRIPT = """
 """.trimIndent()
 
 /**
- * Split-screen WebView panel for the top half of the screen.
- * The parent layout handles the split (this is the top portion).
+ * Split-screen WebView panel.
+ * Toolbar is z-indexed above WebView to guarantee click delivery.
  */
 @Composable
 fun ChatEmbeddedWebView(
@@ -117,72 +119,63 @@ fun ChatEmbeddedWebView(
     onBridgeMessage: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        modifier = modifier,
-        tonalElevation = 2.dp,
-    ) {
-        Column {
-            // Toolbar: URL + close button — elevated above WebView
-            Surface(
-                tonalElevation = 4.dp,
-                shadowElevation = 2.dp,
+    Column(modifier = modifier) {
+        // Toolbar: elevated, z-indexed above WebView, guaranteed clickable
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .zIndex(10f)
+                .height(48.dp)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = url,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = MaterialTheme.colorScheme.outline,
+                modifier = Modifier.weight(1f).padding(start = 8.dp),
+            )
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.size(48.dp),
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(44.dp)
-                        .padding(horizontal = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = url,
-                        style = MaterialTheme.typography.labelSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.weight(1f).padding(start = 8.dp),
-                    )
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.size(40.dp),
-                    ) {
-                        Icon(
-                            imageVector = HugeIcons.Cancel01,
-                            contentDescription = "Close",
-                            modifier = Modifier.size(20.dp),
-                        )
+                Icon(
+                    imageVector = HugeIcons.Cancel01,
+                    contentDescription = "Close",
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+        }
+
+        HorizontalDivider()
+
+        // WebView - normal scrolling
+        val webViewState = rememberWebViewState(
+            url = url,
+            interfaces = mapOf(
+                "ElianBridge" to ElianBridge(onBridgeMessage)
+            ),
+        )
+
+        WebView(
+            state = webViewState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            onCreated = { webView ->
+                webView.settings.javaScriptEnabled = true
+                webView.settings.domStorageEnabled = true
+                webView.settings.allowContentAccess = true
+                webView.webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: AndroidWebView?, url: String?) {
+                        super.onPageFinished(view, url)
+                        view?.evaluateJavascript(BRIDGE_LISTENER_SCRIPT, null)
                     }
                 }
-            }
-
-            HorizontalDivider()
-
-            // WebView - normal scrolling, no gesture interception
-            val webViewState = rememberWebViewState(
-                url = url,
-                interfaces = mapOf(
-                    "ElianBridge" to ElianBridge(onBridgeMessage)
-                ),
-            )
-
-            WebView(
-                state = webViewState,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                onCreated = { webView ->
-                    webView.settings.javaScriptEnabled = true
-                    webView.settings.domStorageEnabled = true
-                    webView.settings.allowContentAccess = true
-                    // Auto-inject bridge listener after each page load
-                    webView.webViewClient = object : WebViewClient() {
-                        override fun onPageFinished(view: AndroidWebView?, url: String?) {
-                            super.onPageFinished(view, url)
-                            view?.evaluateJavascript(BRIDGE_LISTENER_SCRIPT, null)
-                        }
-                    }
-                },
-            )
-        }
+            },
+        )
     }
 }
