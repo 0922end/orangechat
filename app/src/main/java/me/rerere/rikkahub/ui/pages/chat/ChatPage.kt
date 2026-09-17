@@ -281,16 +281,27 @@ private fun ChatPageContent(
 
     // Reverse channel: intercept [WebAction]{...}[/WebAction] from AI responses
     val lastMsg = conversation.currentMessages.lastOrNull()
+    val reverseCtx = androidx.compose.ui.platform.LocalContext.current
     androidx.compose.runtime.LaunchedEffect(lastMsg?.id, lastMsg?.parts) {
         val wv = embeddedWebView
-        if (wv != null && lastMsg != null && lastMsg.role == me.rerere.ai.core.MessageRole.ASSISTANT) {
+        if (lastMsg != null && lastMsg.role == me.rerere.ai.core.MessageRole.ASSISTANT) {
             val textParts = lastMsg.parts.filterIsInstance<UIMessagePart.Text>()
-            for (part in textParts) {
-                val regex = Regex("""\[WebAction](.*?)\[/WebAction]""", RegexOption.DOT_MATCHES_ALL)
-                regex.findAll(part.text).forEach { match ->
-                    val actionJson = match.groupValues[1].trim()
-                    val js = "try { window.ElianExecute('" + actionJson.replace("'", "\\'") + "'); } catch(e) {}"
-                    wv.handler.post { wv.evaluateJavascript(js, null) }
+            val fullText = textParts.joinToString("") { it.text }
+            if (fullText.contains("[WebAction]")) {
+                if (wv == null) {
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        android.widget.Toast.makeText(reverseCtx, "WebAction found but webView is NULL", android.widget.Toast.LENGTH_LONG).show()
+                    }
+                } else {
+                    val regex = Regex("""\[WebAction](.*?)\[/WebAction]""", RegexOption.DOT_MATCHES_ALL)
+                    regex.findAll(fullText).forEach { match ->
+                        val actionJson = match.groupValues[1].trim()
+                        val js = "try { window.ElianExecute('" + actionJson.replace("'", "\\'").replace("\n", " ") + "'); } catch(e) {}"
+                        wv.handler.post { wv.evaluateJavascript(js, null) }
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            android.widget.Toast.makeText(reverseCtx, "WebAction executed!", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
                 }
             }
         }
