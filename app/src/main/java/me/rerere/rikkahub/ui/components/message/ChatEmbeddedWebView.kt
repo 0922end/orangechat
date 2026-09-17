@@ -122,27 +122,36 @@ fun ChatEmbeddedWebView(
         tonalElevation = 2.dp,
     ) {
         Column {
-            // Toolbar: URL + close button
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            // Toolbar: URL + close button — elevated above WebView
+            Surface(
+                tonalElevation = 4.dp,
+                shadowElevation = 2.dp,
             ) {
-                Text(
-                    text = url,
-                    style = MaterialTheme.typography.labelSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.outline,
-                    modifier = Modifier.weight(1f).padding(start = 8.dp),
-                )
-                IconButton(onClick = onDismiss) {
-                    Icon(
-                        imageVector = HugeIcons.Cancel01,
-                        contentDescription = "Close",
-                        modifier = Modifier.size(20.dp),
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp)
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = url,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.weight(1f).padding(start = 8.dp),
                     )
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(40.dp),
+                    ) {
+                        Icon(
+                            imageVector = HugeIcons.Cancel01,
+                            contentDescription = "Close",
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
                 }
             }
 
