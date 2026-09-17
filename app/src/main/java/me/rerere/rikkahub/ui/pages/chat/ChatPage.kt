@@ -493,6 +493,7 @@ private fun ChatPageContent(
             visible = embedWebViewVisible,
             onDismiss = { embedWebViewUrl = null },
         )
+        } // Box
     }
     } // CompositionLocalProvider
 }
