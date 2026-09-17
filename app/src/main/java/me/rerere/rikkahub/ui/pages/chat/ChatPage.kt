@@ -275,6 +275,7 @@ private fun ChatPageContent(
     // Fullscreen WebView state
     var embedWebViewUrl by rememberSaveable { mutableStateOf<String?>(null) }
     val embedWebViewVisible = embedWebViewUrl != null
+    var embeddedWebView by remember { mutableStateOf<android.webkit.WebView?>(null) }
 
     TTSAutoPlay(vm = vm, setting = setting, conversation = conversation)
 
