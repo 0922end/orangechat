@@ -237,6 +237,7 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null, au
                     errors = errors,
                     onDismissError = { vm.dismissError(it) },
                     onClearAllErrors = { vm.clearAllErrors() },
+                    onSplitScreenChanged = { splitScreenActive = it },
                 )
             }
             BackHandler(drawerState.isOpen) {
