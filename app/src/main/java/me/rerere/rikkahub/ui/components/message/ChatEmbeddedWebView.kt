@@ -1,7 +1,7 @@
 /*
  * Elian - Chat Embedded WebView
- * Fullscreen WebView overlay with floating toolbar.
- * Auto-injects JS listener to capture user interactions.
+ * Fullscreen WebView overlay with bridge.
+ * Column layout: toolbar above WebView (not overlapping) so close button always works.
  */
 
 package me.rerere.rikkahub.ui.components.message
@@ -9,29 +9,27 @@ package me.rerere.rikkahub.ui.components.message
 import android.webkit.JavascriptInterface
 import android.webkit.WebViewClient
 import android.webkit.WebView as AndroidWebView
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Box
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.rikkahub.ui.components.webview.WebView
@@ -109,79 +107,85 @@ private val BRIDGE_LISTENER_SCRIPT = """
 """.trimIndent()
 
 /**
- * Fullscreen WebView with floating close button.
- * Uses Box layout so toolbar floats ABOVE WebView - no touch event stealing.
+ * Fullscreen WebView with AnimatedVisibility + Column layout.
+ * Toolbar is ABOVE WebView in Column (not overlapping), so close button always works.
+ * No drag gesture (avoids scroll conflict).
  */
 @Composable
 fun ChatEmbeddedWebView(
     url: String,
+    visible: Boolean,
     onDismiss: () -> Unit,
     onBridgeMessage: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier = modifier.background(MaterialTheme.colorScheme.background)) {
-        // WebView fills entire space
-        val webViewState = rememberWebViewState(
-            url = url,
-            interfaces = mapOf(
-                "ElianBridge" to ElianBridge(onBridgeMessage)
-            ),
-        )
+    BackHandler(enabled = visible) {
+        onDismiss()
+    }
 
-        WebView(
-            state = webViewState,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = 48.dp),
-            onCreated = { webView ->
-                webView.settings.javaScriptEnabled = true
-                webView.settings.domStorageEnabled = true
-                webView.settings.allowContentAccess = true
-                webView.webViewClient = object : WebViewClient() {
-                    override fun onPageFinished(view: AndroidWebView?, url: String?) {
-                        super.onPageFinished(view, url)
-                        view?.evaluateJavascript(BRIDGE_LISTENER_SCRIPT, null)
+    AnimatedVisibility(
+        visible = visible,
+        enter = slideInVertically { it },
+        exit = slideOutVertically { it },
+        modifier = modifier,
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+            tonalElevation = 4.dp,
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Toolbar - in Column above WebView, no overlap
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f).padding(start = 8.dp),
+                    ) {
+                        Text(
+                            text = url,
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.outline,
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = HugeIcons.Cancel01,
+                            contentDescription = "Close",
+                            modifier = Modifier.size(20.dp),
+                        )
                     }
                 }
-            },
-        )
 
-        // Floating toolbar on top - guaranteed to receive clicks
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp)
-                .zIndex(100f)
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                .align(Alignment.TopStart)
-                .padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = url,
-                style = MaterialTheme.typography.labelSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                color = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.weight(1f),
-            )
-            // Close button - large touch target
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = androidx.compose.material3.ripple(),
-                        onClick = onDismiss,
+                // WebView with bridge injection
+                val webViewState = rememberWebViewState(
+                    url = url,
+                    interfaces = mapOf(
+                        "ElianBridge" to ElianBridge(onBridgeMessage)
                     ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = HugeIcons.Cancel01,
-                    contentDescription = "Close",
-                    modifier = Modifier.size(24.dp),
-                    tint = MaterialTheme.colorScheme.onSurface,
+                )
+
+                WebView(
+                    state = webViewState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    onCreated = { webView ->
+                        webView.settings.javaScriptEnabled = true
+                        webView.settings.domStorageEnabled = true
+                        webView.settings.allowContentAccess = true
+                        webView.webViewClient = object : WebViewClient() {
+                            override fun onPageFinished(view: AndroidWebView?, url: String?) {
+                                super.onPageFinished(view, url)
+                                view?.evaluateJavascript(BRIDGE_LISTENER_SCRIPT, null)
+                            }
+                        }
+                    },
                 )
             }
         }
