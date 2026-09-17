@@ -272,14 +272,20 @@ private fun ChatPageContent(
     var previewMode by rememberSaveable { mutableStateOf(false) }
     val hazeState = rememberHazeState()
 
-    // WebView is now inline in chat bubbles, no overlay needed
+    // Fullscreen WebView state
+    var embedWebViewUrl by rememberSaveable { mutableStateOf<String?>(null) }
+    val embedWebViewVisible = embedWebViewUrl != null
 
     TTSAutoPlay(vm = vm, setting = setting, conversation = conversation)
 
+    CompositionLocalProvider(
+        LocalEmbedWebView provides { url -> embedWebViewUrl = url }
+    ) {
     Surface(
         color = MaterialTheme.colorScheme.background,
         modifier = Modifier.fillMaxSize()
     ) {
+        androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
         AssistantBackground(setting = setting)
         Scaffold(
             topBar = {
