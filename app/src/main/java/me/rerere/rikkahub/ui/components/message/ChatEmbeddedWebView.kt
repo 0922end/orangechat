@@ -66,19 +66,51 @@ class ElianBridge(
     }
 }
 
-/** JS script auto-injected after page load to capture user interactions */
+/** JS script auto-injected after page load to capture user interactions + bubble system */
 private val BRIDGE_LISTENER_SCRIPT = """
 (function() {
     if (window.__elianBridgeInjected) return;
     window.__elianBridgeInjected = true;
 
+    // === Elian Bubble System ===
+    var style = document.createElement('style');
+    style.textContent = '\
+        .elian-bubble { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:99999; max-width:80%; padding:16px 24px; border-radius:16px; font-size:15px; line-height:1.5; opacity:0; animation:elianIn 0.3s ease forwards; pointer-events:none; box-shadow:0 8px 32px rgba(0,0,0,0.15); text-align:center; } \
+        .elian-bubble.talk { background:#fff0f5; border:2px solid #ff69b4; color:#333; } \
+        .elian-bubble.action { background:#f0f4ff; border:2px solid #6495ed; color:#555; font-style:italic; } \
+        .elian-bubble.fadeout { animation:elianOut 0.5s ease forwards; } \
+        @keyframes elianIn { from{opacity:0;transform:translate(-50%,-50%) scale(0.8)} to{opacity:1;transform:translate(-50%,-50%) scale(1)} } \
+        @keyframes elianOut { from{opacity:1;transform:translate(-50%,-50%) scale(1)} to{opacity:0;transform:translate(-50%,-50%) scale(0.8)} } \
+    ';
+    document.head.appendChild(style);
+
+    window.ElianShowBubble = function(text, type) {
+        type = type || 'talk';
+        var old = document.querySelector('.elian-bubble');
+        if (old) old.remove();
+        var b = document.createElement('div');
+        b.className = 'elian-bubble ' + type;
+        b.textContent = text;
+        document.body.appendChild(b);
+        setTimeout(function() { b.classList.add('fadeout'); setTimeout(function() { b.remove(); }, 500); }, 3500);
+    };
+
+    window.ElianExecute = function(actionJson) {
+        try {
+            var a = JSON.parse(actionJson);
+            if (a.bubble) window.ElianShowBubble(a.bubble.text, a.bubble.type || 'talk');
+            if (a.js) eval(a.js);
+        } catch(ex) {}
+    };
+
+    // === User Interaction Listeners ===
     document.addEventListener('click', function(e) {
         var el = e.target;
         var info = {
             type: 'click',
             tag: el.tagName,
             text: (el.innerText || '').substring(0, 200),
-            href: el.href || el.closest('a')?.href || '',
+            href: el.href || (el.closest('a') ? el.closest('a').href : ''),
             id: el.id || '',
             className: (el.className || '').substring(0, 100)
         };
@@ -86,11 +118,7 @@ private val BRIDGE_LISTENER_SCRIPT = """
     }, true);
 
     document.addEventListener('submit', function(e) {
-        var info = {
-            type: 'submit',
-            action: e.target.action || '',
-            method: e.target.method || ''
-        };
+        var info = { type: 'submit', action: e.target.action || '', method: e.target.method || '' };
         try { ElianBridge.postMessage(JSON.stringify(info)); } catch(ex) {}
     }, true);
 
@@ -98,25 +126,11 @@ private val BRIDGE_LISTENER_SCRIPT = """
     new MutationObserver(function() {
         if (document.title !== lastTitle) {
             lastTitle = document.title;
-            try {
-                ElianBridge.postMessage(JSON.stringify({
-                    type: 'navigation',
-                    title: document.title,
-                    url: location.href
-                }));
-            } catch(ex) {}
+            try { ElianBridge.postMessage(JSON.stringify({ type:'navigation', title:document.title, url:location.href })); } catch(ex) {}
         }
-    }).observe(document.querySelector('title') || document.head, {
-        childList: true, subtree: true, characterData: true
-    });
+    }).observe(document.querySelector('title') || document.head, { childList:true, subtree:true, characterData:true });
 
-    try {
-        ElianBridge.postMessage(JSON.stringify({
-            type: 'page_loaded',
-            title: document.title,
-            url: location.href
-        }));
-    } catch(ex) {}
+    try { ElianBridge.postMessage(JSON.stringify({ type:'page_loaded', title:document.title, url:location.href })); } catch(ex) {}
 })();
 """.trimIndent()
 
