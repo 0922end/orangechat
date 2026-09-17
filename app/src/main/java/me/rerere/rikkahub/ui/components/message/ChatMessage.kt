@@ -523,6 +523,25 @@ private fun MessagePartsBlock(
                                 
                             }
                         }
+
+                        // Auto-detect URLs in text and show preview cards
+                        val detectedUrls = remember(displayText) {
+                            Regex("https?://[^\\s<>\"'\\]\\)]+")
+                                .findAll(displayText)
+                                .map { it.value }
+                                .distinct()
+                                .take(5)
+                                .toList()
+                        }
+                        detectedUrls.forEach { detectedUrl ->
+                            WebEmbedPreviewCard(
+                                webEmbed = UIMessagePart.WebEmbed(
+                                    url = detectedUrl,
+                                    domain = runCatching { java.net.URI(detectedUrl).host }.getOrNull(),
+                                ),
+                                modifier = Modifier.padding(top = 4.dp),
+                            )
+                        }
                     }
  
                     is UIMessagePart.Video -> {
