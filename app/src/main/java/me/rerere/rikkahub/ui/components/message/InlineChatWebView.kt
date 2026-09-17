@@ -141,10 +141,11 @@ fun InlineChatWebView(
         HorizontalDivider()
 
         // Interactive WebView
+        val context = androidx.compose.ui.platform.LocalContext.current
         val webViewState = rememberWebViewState(
             url = url,
             interfaces = mapOf(
-                "ElianBridge" to ElianBridge(onBridgeMessage)
+                "ElianBridge" to ElianBridge(context, onBridgeMessage)
             ),
         )
 
