@@ -179,25 +179,23 @@ fun ChatEmbeddedWebView(
                 // WebView with bridge injection
                 val context = androidx.compose.ui.platform.LocalContext.current
                 val bridge = remember { ElianBridge(context, onBridgeMessage) }
-                val webViewState = rememberWebViewState(url = url)
+                val webViewState = rememberWebViewState(
+                    url = url,
+                    interfaces = mapOf("ElianBridge" to bridge),
+                )
+
+                // Inject bridge listener script when page finishes loading
+                androidx.compose.runtime.LaunchedEffect(webViewState.isLoading) {
+                    if (!webViewState.isLoading && webViewState.webView != null) {
+                        webViewState.webView?.evaluateJavascript(BRIDGE_LISTENER_SCRIPT, null)
+                    }
+                }
 
                 WebView(
                     state = webViewState,
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    onCreated = { webView ->
-                        webView.settings.javaScriptEnabled = true
-                        webView.settings.domStorageEnabled = true
-                        webView.settings.allowContentAccess = true
-                        webView.addJavascriptInterface(bridge, "ElianBridge")
-                        webView.webViewClient = object : WebViewClient() {
-                            override fun onPageFinished(view: AndroidWebView?, url: String?) {
-                                super.onPageFinished(view, url)
-                                view?.evaluateJavascript(BRIDGE_LISTENER_SCRIPT, null)
-                            }
-                        }
-                    },
                 )
             }
         }
