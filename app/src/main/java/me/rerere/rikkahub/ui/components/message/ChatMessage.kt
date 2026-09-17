@@ -524,21 +524,18 @@ private fun MessagePartsBlock(
                             }
                         }
 
-                        // Auto-detect URLs in text and show preview cards
+                        // Auto-detect URLs in text and render inline WebView
                         val detectedUrls = remember(displayText) {
                             Regex("https?://[^\\s<>\"'\\]\\)]+")
                                 .findAll(displayText)
                                 .map { it.value }
                                 .distinct()
-                                .take(5)
+                                .take(1)
                                 .toList()
                         }
                         detectedUrls.forEach { detectedUrl ->
-                            WebEmbedPreviewCard(
-                                webEmbed = UIMessagePart.WebEmbed(
-                                    url = detectedUrl,
-                                    domain = runCatching { java.net.URI(detectedUrl).host }.getOrNull(),
-                                ),
+                            InlineChatWebView(
+                                url = detectedUrl,
                                 modifier = Modifier.padding(top = 4.dp),
                             )
                         }
