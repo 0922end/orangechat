@@ -535,6 +535,7 @@ fun List<UIMessagePart>.toSortedMessageParts(): List<UIMessagePart> {
             is UIMessagePart.Audio -> 1
             is UIMessagePart.VoiceMessage -> 1
             is UIMessagePart.Document -> 1
+            is UIMessagePart.WebEmbed -> 0
         }
     }
 }
