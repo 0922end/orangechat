@@ -266,8 +266,15 @@ private fun ChatPageContent(
     var previewMode by rememberSaveable { mutableStateOf(false) }
     val hazeState = rememberHazeState()
 
+    // Embedded WebView state
+    var embedWebViewUrl by rememberSaveable { mutableStateOf<String?>(null) }
+    val embedWebViewVisible = embedWebViewUrl != null
+
     TTSAutoPlay(vm = vm, setting = setting, conversation = conversation)
 
+    CompositionLocalProvider(
+        LocalEmbedWebView provides { url -> embedWebViewUrl = url }
+    ) {
     Surface(
         color = MaterialTheme.colorScheme.background,
         modifier = Modifier.fillMaxSize()
