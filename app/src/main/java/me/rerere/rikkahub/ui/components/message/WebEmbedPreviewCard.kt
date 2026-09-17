@@ -33,9 +33,9 @@ import me.rerere.rikkahub.utils.openUrl
 internal fun WebEmbedPreviewCard(
     webEmbed: UIMessagePart.WebEmbed,
     modifier: Modifier = Modifier,
-    onOpenEmbed: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
+    val embedHandler = LocalEmbedWebView.current
     val title = webEmbed.title ?: webEmbed.url
     val domain = webEmbed.domain ?: runCatching {
         java.net.URI(webEmbed.url).host ?: webEmbed.url
@@ -46,8 +46,8 @@ internal fun WebEmbedPreviewCard(
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .clickable {
-                if (onOpenEmbed != null) {
-                    onOpenEmbed(webEmbed.url)
+                if (embedHandler != null) {
+                    embedHandler(webEmbed.url)
                 } else {
                     context.openUrl(webEmbed.url)
                 }
