@@ -498,7 +498,10 @@ private fun ChatPageContent(
         ChatEmbeddedWebView(
             url = embedWebViewUrl ?: "",
             visible = embedWebViewVisible,
-            onDismiss = { embedWebViewUrl = null },
+            onDismiss = {
+                embedWebViewUrl = null
+                embeddedWebView = null
+            },
             onBridgeMessage = { message ->
                 vm.handleMessageSend(
                     content = listOf(
@@ -507,6 +510,7 @@ private fun ChatPageContent(
                     answer = true,
                 )
             },
+            onWebViewReady = { wv -> embeddedWebView = wv },
         )
         } // Box
     } // Surface
