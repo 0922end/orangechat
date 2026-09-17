@@ -276,11 +276,6 @@ private fun ChatPageContent(
     var embedWebViewUrl by rememberSaveable { mutableStateOf<String?>(null) }
     val embedWebViewVisible = embedWebViewUrl != null
 
-    // Notify parent when split-screen activates/deactivates
-    LaunchedEffect(embedWebViewVisible) {
-        onSplitScreenChanged(embedWebViewVisible)
-    }
-
     TTSAutoPlay(vm = vm, setting = setting, conversation = conversation)
 
     CompositionLocalProvider(
