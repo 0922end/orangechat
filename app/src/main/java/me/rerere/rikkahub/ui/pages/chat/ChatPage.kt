@@ -279,6 +279,7 @@ private fun ChatPageContent(
         color = MaterialTheme.colorScheme.background,
         modifier = Modifier.fillMaxSize()
     ) {
+        androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
         AssistantBackground(setting = setting)
         Scaffold(
             topBar = {
