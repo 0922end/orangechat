@@ -493,7 +493,25 @@ private fun ChatPageContent(
             )
         }
 
-    }
+        // Fullscreen WebView overlay
+        if (embedWebViewVisible) {
+            ChatEmbeddedWebView(
+                url = embedWebViewUrl ?: "",
+                onDismiss = { embedWebViewUrl = null },
+                onBridgeMessage = { message ->
+                    vm.handleMessageSend(
+                        content = listOf(
+                            UIMessagePart.Text(text = "[WebBridge] $message")
+                        ),
+                        answer = true,
+                    )
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        } // Box
+    } // Surface
+    } // CompositionLocalProvider
 }
 
 @Composable
