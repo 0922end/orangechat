@@ -485,7 +485,15 @@ private fun ChatPageContent(
                 },
             )
         }
+
+        // Embedded WebView overlay
+        ChatEmbeddedWebView(
+            url = embedWebViewUrl ?: "",
+            visible = embedWebViewVisible,
+            onDismiss = { embedWebViewUrl = null },
+        )
     }
+    } // CompositionLocalProvider
 }
 
 @Composable
