@@ -389,7 +389,12 @@ private fun MessagePartsBlock(
                     is UIMessagePart.Text -> {
                         // 从显示文本中移除[zip:...]标记
                         val displayText = remember(part.text) {
-                            part.text.replace(Regex("\\[zip:[^\\]]+\\]", RegexOption.IGNORE_CASE), "")
+                            part.text
+                                .replace(Regex("\\[zip:[^\\]]+\\]", RegexOption.IGNORE_CASE), "")
+                                .replace(Regex("\\[WebAction].*?\\[/WebAction]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+                                .replace(Regex("\\[WebEmbed].*", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+                                .replace(Regex("\\[WebBridge]\\n?", RegexOption.IGNORE_CASE), "")
+                                .trim()
                         }
                         
                         SelectionContainer {
