@@ -535,7 +535,7 @@ private fun ChatPageContent(
                     content = listOf(
                         UIMessagePart.Text(text = "[WebBridge] $message")
                     ),
-                    answer = true,
+                    answer = false,
                 )
             },
             onWebViewReady = { wv -> embeddedWebView = wv },
