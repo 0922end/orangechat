@@ -137,7 +137,7 @@ fun ChatEmbeddedWebView(
             shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
             tonalElevation = 4.dp,
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
+            Column(modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
                 // Toolbar - in Column above WebView, no overlap
                 Row(
                     modifier = Modifier
