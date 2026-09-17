@@ -487,10 +487,7 @@ private fun ChatPageContent(
             )
         }
 
-        } // Box
-        } // Column
     }
-    } // CompositionLocalProvider
 }
 
 @Composable
