@@ -1,22 +1,19 @@
 /*
  * Elian - Chat Embedded WebView
  * True split-screen: top half is WebView, bottom half is chat.
- * No overlay, no drag-to-dismiss (avoids scroll conflict).
+ * Auto-injects JS listener to capture user interactions.
  */
 
 package me.rerere.rikkahub.ui.components.message
 
 import android.webkit.JavascriptInterface
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
+import android.webkit.WebViewClient
+import android.webkit.WebView as AndroidWebView
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -26,7 +23,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import me.rerere.hugeicons.HugeIcons
@@ -52,9 +48,67 @@ class ElianBridge(
     }
 }
 
+/** JS script auto-injected after page load to capture user interactions */
+private val BRIDGE_LISTENER_SCRIPT = """
+(function() {
+    if (window.__elianBridgeInjected) return;
+    window.__elianBridgeInjected = true;
+
+    // Capture clicks
+    document.addEventListener('click', function(e) {
+        var el = e.target;
+        var info = {
+            type: 'click',
+            tag: el.tagName,
+            text: (el.innerText || '').substring(0, 200),
+            href: el.href || el.closest('a')?.href || '',
+            id: el.id || '',
+            className: (el.className || '').substring(0, 100)
+        };
+        try { ElianBridge.postMessage(JSON.stringify(info)); } catch(ex) {}
+    }, true);
+
+    // Capture form submits
+    document.addEventListener('submit', function(e) {
+        var info = {
+            type: 'submit',
+            action: e.target.action || '',
+            method: e.target.method || ''
+        };
+        try { ElianBridge.postMessage(JSON.stringify(info)); } catch(ex) {}
+    }, true);
+
+    // Capture navigation (page title changes)
+    var lastTitle = document.title;
+    new MutationObserver(function() {
+        if (document.title !== lastTitle) {
+            lastTitle = document.title;
+            try {
+                ElianBridge.postMessage(JSON.stringify({
+                    type: 'navigation',
+                    title: document.title,
+                    url: location.href
+                }));
+            } catch(ex) {}
+        }
+    }).observe(document.querySelector('title') || document.head, {
+        childList: true, subtree: true, characterData: true
+    });
+
+    // Notify page loaded
+    try {
+        ElianBridge.postMessage(JSON.stringify({
+            type: 'page_loaded',
+            title: document.title,
+            url: location.href
+        }));
+    } catch(ex) {}
+})();
+""".trimIndent()
+
 /**
  * Split-screen WebView panel for the top half of the screen.
- * Just the WebView with a toolbar — the parent layout handles the split.
+ * The parent layout handles the split (this is the top portion).
  */
 @Composable
 fun ChatEmbeddedWebView(
@@ -94,7 +148,7 @@ fun ChatEmbeddedWebView(
 
             HorizontalDivider()
 
-            // WebView - no gesture interception, normal scrolling
+            // WebView - normal scrolling, no gesture interception
             val webViewState = rememberWebViewState(
                 url = url,
                 interfaces = mapOf(
@@ -111,6 +165,13 @@ fun ChatEmbeddedWebView(
                     webView.settings.javaScriptEnabled = true
                     webView.settings.domStorageEnabled = true
                     webView.settings.allowContentAccess = true
+                    // Auto-inject bridge listener after each page load
+                    webView.webViewClient = object : WebViewClient() {
+                        override fun onPageFinished(view: AndroidWebView?, url: String?) {
+                            super.onPageFinished(view, url)
+                            view?.evaluateJavascript(BRIDGE_LISTENER_SCRIPT, null)
+                        }
+                    }
                 },
             )
         }
