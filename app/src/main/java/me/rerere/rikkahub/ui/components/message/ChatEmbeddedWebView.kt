@@ -98,8 +98,26 @@ private val BRIDGE_LISTENER_SCRIPT = """
     window.ElianExecute = function(actionJson) {
         try {
             var a = JSON.parse(actionJson);
-            if (a.bubble) window.ElianShowBubble(a.bubble.text, a.bubble.type || 'talk');
-            if (a.js) eval(a.js);
+            if (a.bubble) {
+                window.ElianShowBubble(a.bubble.text, a.bubble.type || 'talk');
+                try {
+                    ElianBridge.postMessage(JSON.stringify({
+                        type: 'ai_action',
+                        bubble_text: a.bubble.text,
+                        bubble_type: a.bubble.type || 'talk'
+                    }));
+                } catch(ex2) {}
+            }
+            if (a.js) {
+                eval(a.js);
+                try {
+                    ElianBridge.postMessage(JSON.stringify({
+                        type: 'ai_action',
+                        js_executed: true,
+                        description: a.description || 'Eli executed an action'
+                    }));
+                } catch(ex3) {}
+            }
         } catch(ex) {}
     };
 
