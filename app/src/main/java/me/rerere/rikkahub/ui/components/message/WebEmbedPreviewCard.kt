@@ -33,6 +33,7 @@ import me.rerere.rikkahub.utils.openUrl
 internal fun WebEmbedPreviewCard(
     webEmbed: UIMessagePart.WebEmbed,
     modifier: Modifier = Modifier,
+    onOpenEmbed: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val title = webEmbed.title ?: webEmbed.url
@@ -44,7 +45,13 @@ internal fun WebEmbedPreviewCard(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .clickable { context.openUrl(webEmbed.url) },
+            .clickable {
+                if (onOpenEmbed != null) {
+                    onOpenEmbed(webEmbed.url)
+                } else {
+                    context.openUrl(webEmbed.url)
+                }
+            },
         tonalElevation = 2.dp,
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
