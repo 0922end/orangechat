@@ -279,6 +279,26 @@ private fun ChatPageContent(
 
     TTSAutoPlay(vm = vm, setting = setting, conversation = conversation)
 
+    // Reverse channel: intercept [WebAction]{...}[/WebAction] from AI responses
+    val lastMsg = conversation.currentMessages.lastOrNull()
+    androidx.compose.runtime.LaunchedEffect(lastMsg?.id, lastMsg?.parts) {
+        if (embeddedWebView != null && lastMsg != null && lastMsg.role == me.rerere.ai.ui.UIMessage.Role.ASSISTANT) {
+            val textParts = lastMsg.parts.filterIsInstance<UIMessagePart.Text>()
+            for (part in textParts) {
+                val regex = Regex("""\[WebAction](.*?)\[/WebAction]""", RegexOption.DOT_MATCHES_ALL)
+                regex.findAll(part.text).forEach { match ->
+                    val actionJson = match.groupValues[1].trim()
+                    embeddedWebView?.post {
+                        embeddedWebView?.evaluateJavascript(
+                            "try { window.ElianExecute('" + actionJson.replace("'", "\\'") + "'); } catch(e) {}",
+                            null
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     CompositionLocalProvider(
         LocalEmbedWebView provides { url -> embedWebViewUrl = url }
     ) {
