@@ -282,18 +282,15 @@ private fun ChatPageContent(
     // Reverse channel: intercept [WebAction]{...}[/WebAction] from AI responses
     val lastMsg = conversation.currentMessages.lastOrNull()
     androidx.compose.runtime.LaunchedEffect(lastMsg?.id, lastMsg?.parts) {
-        if (embeddedWebView != null && lastMsg != null && lastMsg.role == me.rerere.ai.ui.UIMessage.Role.ASSISTANT) {
+        val wv = embeddedWebView
+        if (wv != null && lastMsg != null && lastMsg.role.name.lowercase() == "assistant") {
             val textParts = lastMsg.parts.filterIsInstance<UIMessagePart.Text>()
             for (part in textParts) {
                 val regex = Regex("""\[WebAction](.*?)\[/WebAction]""", RegexOption.DOT_MATCHES_ALL)
                 regex.findAll(part.text).forEach { match ->
                     val actionJson = match.groupValues[1].trim()
-                    embeddedWebView?.post {
-                        embeddedWebView?.evaluateJavascript(
-                            "try { window.ElianExecute('" + actionJson.replace("'", "\\'") + "'); } catch(e) {}",
-                            null
-                        )
-                    }
+                    val js = "try { window.ElianExecute('" + actionJson.replace("'", "\\'") + "'); } catch(e) {}"
+                    wv.handler.post { wv.evaluateJavascript(js, null) }
                 }
             }
         }
