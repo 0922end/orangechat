@@ -279,10 +279,11 @@ private fun ChatPageContent(
 
     TTSAutoPlay(vm = vm, setting = setting, conversation = conversation)
 
-    // Reverse channel: intercept [WebAction]{...}[/WebAction] from AI responses
+    // Reverse channel: intercept [WebAction]{...}[/WebAction] from AI responses (only after generation completes)
     val lastMsg = conversation.currentMessages.lastOrNull()
     val reverseCtx = androidx.compose.ui.platform.LocalContext.current
-    androidx.compose.runtime.LaunchedEffect(lastMsg?.id, lastMsg?.parts) {
+    androidx.compose.runtime.LaunchedEffect(lastMsg?.id, loadingJob) {
+        if (loadingJob != null) return@LaunchedEffect  // still generating, wait
         val wv = embeddedWebView
         if (lastMsg != null && lastMsg.role == me.rerere.ai.core.MessageRole.ASSISTANT) {
             val textParts = lastMsg.parts.filterIsInstance<UIMessagePart.Text>()
