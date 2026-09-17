@@ -272,9 +272,7 @@ private fun ChatPageContent(
     var previewMode by rememberSaveable { mutableStateOf(false) }
     val hazeState = rememberHazeState()
 
-    // Embedded WebView state
-    var embedWebViewUrl by rememberSaveable { mutableStateOf<String?>(null) }
-    val embedWebViewVisible = embedWebViewUrl != null
+    // WebView is now inline in chat bubbles, no overlay needed
 
     TTSAutoPlay(vm = vm, setting = setting, conversation = conversation)
 
