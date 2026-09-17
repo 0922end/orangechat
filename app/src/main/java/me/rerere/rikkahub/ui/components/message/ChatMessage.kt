@@ -394,6 +394,7 @@ private fun MessagePartsBlock(
                                 .replace(Regex("\\[WebAction].*?\\[/WebAction]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
                                 .replace(Regex("\\[WebEmbed].*", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
                                 .replace(Regex("\\[WebBridge]\\n?", RegexOption.IGNORE_CASE), "")
+                                .replace(Regex("\\{\"type\":\"(click|submit|page_loaded|navigation|ai_action)\"[^}]*\\}", RegexOption.DOT_MATCHES_ALL), "")
                                 .trim()
                         }
                         
