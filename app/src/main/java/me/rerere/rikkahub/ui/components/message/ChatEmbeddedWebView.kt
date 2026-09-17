@@ -145,6 +145,7 @@ fun ChatEmbeddedWebView(
     visible: Boolean,
     onDismiss: () -> Unit,
     onBridgeMessage: (String) -> Unit = {},
+    onWebViewReady: (AndroidWebView?) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     BackHandler(enabled = visible) {
