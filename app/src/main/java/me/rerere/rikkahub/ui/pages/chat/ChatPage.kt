@@ -277,6 +277,10 @@ private fun ChatPageContent(
     val embedWebViewVisible = embedWebViewUrl != null
     var embeddedWebView by androidx.compose.runtime.remember { mutableStateOf<android.webkit.WebView?>(null) }
 
+    // Bridge message aggregation buffer
+    val bridgeBuffer = androidx.compose.runtime.remember { mutableListOf<String>() }
+    val bridgeJob = androidx.compose.runtime.remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+
     TTSAutoPlay(vm = vm, setting = setting, conversation = conversation)
 
     // Reverse channel: intercept [WebAction]{...}[/WebAction] from AI responses (only after generation completes)
