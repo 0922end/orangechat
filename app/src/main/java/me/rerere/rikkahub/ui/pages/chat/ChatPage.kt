@@ -543,9 +543,10 @@ private fun ChatPageContent(
                     if (bridgeBuffer.isNotEmpty() && loadingJob == null) {
                         val merged = bridgeBuffer.joinToString("\n")
                         bridgeBuffer.clear()
+                        val bridgeText = "[WebBridge]\n$merged\n\n[WebEmbed] You are co-browsing a webpage with the user. Respond in chat AND optionally use [WebAction] to show a bubble on the webpage.\nFormat: [WebAction]{\"bubble\":{\"text\":\"your message\",\"type\":\"talk\"}}[/WebAction]\nTypes: talk (pink, your words) or action (blue, action description). Bubble shows centered on webpage for 3.5s."
                         vm.handleMessageSend(
                             content = listOf(
-                                UIMessagePart.Text(text = "[WebBridge]\n$merged")
+                                UIMessagePart.Text(text = bridgeText)
                             ),
                             answer = true,
                         )
