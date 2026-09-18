@@ -283,6 +283,22 @@ private fun ChatPageContent(
 
     TTSAutoPlay(vm = vm, setting = setting, conversation = conversation)
 
+    // Flush bridge buffer when AI finishes generating
+    androidx.compose.runtime.LaunchedEffect(loadingJob) {
+        if (loadingJob == null && bridgeBuffer.isNotEmpty()) {
+            kotlinx.coroutines.delay(500L)
+            if (bridgeBuffer.isNotEmpty() && loadingJob == null) {
+                val merged = bridgeBuffer.joinToString("\n")
+                bridgeBuffer.clear()
+                val bridgeText = "[WebBridge]\n$merged\n\n[WebEmbed] You are co-browsing a webpage with the user. You can: 1) respond in chat, 2) show a bubble on the webpage, 3) directly operate the webpage via JS. Use [WebAction] tags.\nFormat: [WebAction]{\"bubble\":{\"text\":\"msg\",\"type\":\"talk\"},\"js\":\"code\",\"description\":\"what you did\"}[/WebAction]\nbubble types: talk(pink) action(blue). js: any JS to operate the page (click/scroll/modify DOM etc).\nExamples:\nBubble only: [WebAction]{\"bubble\":{\"text\":\"cute~\",\"type\":\"talk\"}}[/WebAction]\nClick a button: [WebAction]{\"js\":\"document.querySelector('button.next').click()\",\"bubble\":{\"text\":\"let me flip the page for you\",\"type\":\"action\"},\"description\":\"Eli clicked next page\"}[/WebAction]\nScroll down: [WebAction]{\"js\":\"window.scrollBy(0,500)\",\"bubble\":{\"text\":\"scrolling down~\",\"type\":\"action\"}}[/WebAction]\nYou can use multiple [WebAction] tags per reply. Be playful!"
+                vm.handleMessageSend(
+                    content = listOf(UIMessagePart.Text(text = bridgeText)),
+                    answer = true,
+                )
+            }
+        }
+    }
+
     // Reverse channel: intercept [WebAction]{...}[/WebAction] from AI responses (only after generation completes)
     val lastMsg = conversation.currentMessages.lastOrNull()
     val reverseCtx = androidx.compose.ui.platform.LocalContext.current
