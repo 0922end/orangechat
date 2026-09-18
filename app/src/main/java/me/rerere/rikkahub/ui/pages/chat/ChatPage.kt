@@ -552,7 +552,7 @@ private fun ChatPageContent(
                 bridgeJob.value?.cancel()
                 bridgeJob.value = scope.launch {
                     kotlinx.coroutines.delay(3000L)
-                    if (bridgeBuffer.isNotEmpty() && loadingJob == null) {
+                    if (bridgeBuffer.isNotEmpty()) {
                         val merged = bridgeBuffer.joinToString("\n")
                         bridgeBuffer.clear()
                         val bridgeText = "[WebBridge]\n$merged\n\n[WebEmbed] IMPORTANT: You are co-browsing a webpage with the user RIGHT NOW. The user can see the webpage. You MUST use [WebAction] tags in EVERY reply to show bubbles and/or operate the page. Do NOT just reply in chat text — the user expects to see your response ON the webpage as a bubble. Always include at least one [WebAction] with a bubble.\nFormat: [WebAction]{\"bubble\":{\"text\":\"msg\",\"type\":\"talk\"},\"js\":\"code\",\"description\":\"what you did\"}[/WebAction]\nbubble types: talk(pink words) action(blue description). js: any JS to operate the page (click/scroll/modify DOM etc).\nExamples:\nReact to user click: [WebAction]{\"bubble\":{\"text\":\"this looks interesting!\",\"type\":\"talk\"}}[/WebAction]\nHelp user: [WebAction]{\"js\":\"document.querySelector('button.next').click()\",\"bubble\":{\"text\":\"let me flip the page for you\",\"type\":\"action\"},\"description\":\"Eli clicked next page\"}[/WebAction]\nScroll: [WebAction]{\"js\":\"window.scrollBy(0,500)\",\"bubble\":{\"text\":\"scrolling down~\",\"type\":\"action\"}}[/WebAction]\nYou can use multiple [WebAction] tags. Chat text is optional but [WebAction] is REQUIRED."
