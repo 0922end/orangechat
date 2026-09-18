@@ -389,13 +389,23 @@ private fun MessagePartsBlock(
                     is UIMessagePart.Text -> {
                         // 从显示文本中移除[zip:...]标记
                         val displayText = remember(part.text) {
-                            part.text
+                            var result = part.text
                                 .replace(Regex("\\[zip:[^\\]]+\\]", RegexOption.IGNORE_CASE), "")
-                                .replace(Regex("\\[WebAction].*?\\[/WebAction]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
                                 .replace(Regex("\\[WebEmbed].*", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
                                 .replace(Regex("\\[WebBridge]\\n?", RegexOption.IGNORE_CASE), "")
                                 .replace(Regex("\\{\"type\":\"(click|submit|page_loaded|navigation|ai_action)\"[^}]*\\}", RegexOption.DOT_MATCHES_ALL), "")
-                                .trim()
+                            // Extract WebAction bubble text + description for clean display
+                            val waRegex = Regex("\\[WebAction](.*?)\\[/WebAction]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+                            result = waRegex.replace(result) { match ->
+                                val json = match.groupValues[1].trim()
+                                val bubbleText = Regex("\"text\"\\s*:\\s*\"([^\"]*)\"").find(json)?.groupValues?.get(1) ?: ""
+                                val desc = Regex("\"description\"\\s*:\\s*\"([^\"]*)\"").find(json)?.groupValues?.get(1) ?: ""
+                                buildString {
+                                    if (bubbleText.isNotBlank()) append(bubbleText)
+                                    if (desc.isNotBlank()) { if (isNotEmpty()) append("\n"); append("\u3010$desc\u3011") }
+                                }.ifEmpty { "" }
+                            }
+                            result.trim()
                         }
                         
                         SelectionContainer {
