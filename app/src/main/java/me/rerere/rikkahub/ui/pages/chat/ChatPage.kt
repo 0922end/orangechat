@@ -559,7 +559,7 @@ private fun ChatPageContent(
                 bridgeJob.value?.cancel()
                 bridgeJob.value = scope.launch {
                     kotlinx.coroutines.delay(3000L)
-                    if (bridgeBuffer.isNotEmpty()) {
+                    if (bridgeBuffer.isNotEmpty() && loadingJob == null) {
                         val merged = bridgeBuffer.joinToString("\n")
                         bridgeBuffer.clear()
                         val hint = if (!bridgePromptSent.value) {
