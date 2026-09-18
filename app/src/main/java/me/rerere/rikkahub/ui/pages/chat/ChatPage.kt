@@ -553,6 +553,9 @@ private fun ChatPageContent(
                 embeddedWebView = null
             },
             onBridgeMessage = { message ->
+                // Filter out ai_action feedback to prevent infinite loop
+                val isAiAction = try { message.contains("\"type\":\"ai_action\"") } catch(_: Exception) { false }
+                if (isAiAction) return@ChatEmbeddedWebView
                 bridgeBuffer.add(message)
                 bridgeJob.value?.cancel()
                 bridgeJob.value = scope.launch {
