@@ -281,6 +281,7 @@ private fun ChatPageContent(
     val bridgeBuffer = androidx.compose.runtime.remember { mutableListOf<String>() }
     val bridgeJob = androidx.compose.runtime.remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val executedWebActionMsgIds = androidx.compose.runtime.remember { mutableSetOf<kotlin.uuid.Uuid>() }
+    val bridgePromptSent = androidx.compose.runtime.remember { mutableStateOf(false) }
 
     TTSAutoPlay(vm = vm, setting = setting, conversation = conversation)
 
