@@ -280,6 +280,7 @@ private fun ChatPageContent(
     // Bridge message aggregation buffer
     val bridgeBuffer = androidx.compose.runtime.remember { mutableListOf<String>() }
     val bridgeJob = androidx.compose.runtime.remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    val executedWebActionMsgIds = androidx.compose.runtime.remember { mutableSetOf<kotlin.uuid.Uuid>() }
 
     TTSAutoPlay(vm = vm, setting = setting, conversation = conversation)
 
