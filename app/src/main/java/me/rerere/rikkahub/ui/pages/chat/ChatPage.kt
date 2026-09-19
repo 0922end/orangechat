@@ -290,11 +290,10 @@ private fun ChatPageContent(
     androidx.compose.runtime.LaunchedEffect(lastMsg?.id, loadingJob) {
         if (loadingJob != null) return@LaunchedEffect  // still generating, wait
         val wv = embeddedWebView
-        if (lastMsg != null && lastMsg.role == me.rerere.ai.core.MessageRole.ASSISTANT && !executedWebActionMsgIds.contains(lastMsg.id)) {
+        if (lastMsg != null && lastMsg.role == me.rerere.ai.core.MessageRole.ASSISTANT) {
             val textParts = lastMsg.parts.filterIsInstance<UIMessagePart.Text>()
             val fullText = textParts.joinToString("") { it.text }
             if (fullText.contains("[WebAction]") && wv != null) {
-                executedWebActionMsgIds.add(lastMsg.id)
                 val regex = Regex("""\[WebAction](.*?)\[/WebAction]""", RegexOption.DOT_MATCHES_ALL)
                 regex.findAll(fullText).forEach { match ->
                     val actionJson = match.groupValues[1].trim()
