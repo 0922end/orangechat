@@ -277,35 +277,12 @@ private fun ChatPageContent(
     val embedWebViewVisible = embedWebViewUrl != null
     var embeddedWebView by androidx.compose.runtime.remember { mutableStateOf<android.webkit.WebView?>(null) }
 
-    // Bridge message aggregation buffer
-    val bridgeBuffer = androidx.compose.runtime.remember { mutableListOf<String>() }
-    val bridgeJob = androidx.compose.runtime.remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-    val executedWebActionMsgIds = androidx.compose.runtime.remember { mutableSetOf<kotlin.uuid.Uuid>() }
+    // Bridge: 1s debounce, direct send, no buffer accumulation
+    val bridgeDebounceJob = androidx.compose.runtime.remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val bridgePromptSent = androidx.compose.runtime.remember { mutableStateOf(false) }
+    val executedWebActions = androidx.compose.runtime.remember { mutableSetOf<String>() }
 
     TTSAutoPlay(vm = vm, setting = setting, conversation = conversation)
-
-    // Flush bridge buffer when AI finishes generating
-    androidx.compose.runtime.LaunchedEffect(loadingJob) {
-        if (loadingJob == null && bridgeBuffer.isNotEmpty()) {
-            kotlinx.coroutines.delay(500L)
-            if (bridgeBuffer.isNotEmpty() && loadingJob == null) {
-                val merged = bridgeBuffer.joinToString("\n")
-                bridgeBuffer.clear()
-                val hint = if (!bridgePromptSent.value) {
-                    bridgePromptSent.value = true
-                    "[WebEmbed] IMPORTANT: You are co-browsing a webpage with the user RIGHT NOW. You MUST use [WebAction] tags in EVERY reply. Do NOT just reply in chat text — show your response ON the webpage as a bubble.\nFormat: [WebAction]{\"bubble\":{\"text\":\"msg\",\"type\":\"talk\"},\"js\":\"code\",\"description\":\"what you did\"}[/WebAction]\nbubble types: talk(pink words) action(blue description). js: any JS to operate the page.\nExamples:\n[WebAction]{\"bubble\":{\"text\":\"interesting!\",\"type\":\"talk\"}}[/WebAction]\n[WebAction]{\"js\":\"document.querySelector('button.next').click()\",\"bubble\":{\"text\":\"flipping page\",\"type\":\"action\"},\"description\":\"Eli clicked next\"}[/WebAction]\nChat text optional, [WebAction] REQUIRED."
-                } else {
-                    "[WebEmbed] Use [WebAction] with bubble."
-                }
-                val bridgeText = "[WebBridge]\n$merged\n\n$hint"
-                vm.handleMessageSend(
-                    content = listOf(UIMessagePart.Text(text = bridgeText)),
-                    answer = true,
-                )
-            }
-        }
-    }
 
     // Reverse channel: intercept [WebAction]{...}[/WebAction] from AI responses (only after generation completes)
     val lastMsg = conversation.currentMessages.lastOrNull()
