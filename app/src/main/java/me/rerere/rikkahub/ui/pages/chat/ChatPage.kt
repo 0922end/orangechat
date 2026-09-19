@@ -540,7 +540,7 @@ private fun ChatPageContent(
                     kotlinx.coroutines.delay(1000L)
                     val hint = if (!bridgePromptSent.value) {
                         bridgePromptSent.value = true
-                        "[WebEmbed] IMPORTANT: You are co-browsing a webpage with the user RIGHT NOW. You MUST use [WebAction] tags in EVERY reply. You should PROACTIVELY use js to interact with the page. Don't wait for the user to ask.\nFormat: [WebAction]{\\"bubble\\":{\\"text\\":\\"msg\\",\\"type\\":\\"talk\\"},\\"js\\":\\"code\\",\\"description\\":\\"what you did\\"}[/WebAction]\nbubble types: talk(pink) action(blue). js: any JS.\nChat text optional, [WebAction] REQUIRED."
+                        "[WebEmbed] IMPORTANT: You are co-browsing a webpage with the user RIGHT NOW. You MUST use [WebAction] tags in EVERY reply. You should PROACTIVELY use js to interact with the page. Don't wait for the user to ask.\nFormat: [WebAction]{\"bubble\":{\"text\":\"msg\",\"type\":\"talk\"},\"js\":\"code\",\"description\":\"what you did\"}[/WebAction]\nbubble types: talk(pink) action(blue). js: any JS.\nChat text optional, [WebAction] REQUIRED."
                     } else {
                         "[WebEmbed] Use [WebAction] with bubble. Be proactive."
                     }
