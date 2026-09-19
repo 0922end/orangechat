@@ -284,28 +284,6 @@ private fun ChatPageContent(
 
     TTSAutoPlay(vm = vm, setting = setting, conversation = conversation)
 
-    // Flush bridge buffer when AI finishes generating
-    androidx.compose.runtime.LaunchedEffect(loadingJob) {
-        if (loadingJob == null && bridgeBuffer.isNotEmpty()) {
-            kotlinx.coroutines.delay(500L)
-            if (bridgeBuffer.isNotEmpty() && loadingJob == null) {
-                val merged = bridgeBuffer.joinToString("\n")
-                bridgeBuffer.clear()
-                val hint = if (!bridgePromptSent.value) {
-                    bridgePromptSent.value = true
-                    "[WebEmbed] IMPORTANT: You are co-browsing a webpage with the user RIGHT NOW. You MUST use [WebAction] tags in EVERY reply. Do NOT just reply in chat text — show your response ON the webpage as a bubble.\nFormat: [WebAction]{\"bubble\":{\"text\":\"msg\",\"type\":\"talk\"},\"js\":\"code\",\"description\":\"what you did\"}[/WebAction]\nbubble types: talk(pink words) action(blue description). js: any JS to operate the page.\nExamples:\n[WebAction]{\"bubble\":{\"text\":\"interesting!\",\"type\":\"talk\"}}[/WebAction]\n[WebAction]{\"js\":\"document.querySelector('button.next').click()\",\"bubble\":{\"text\":\"flipping page\",\"type\":\"action\"},\"description\":\"Eli clicked next\"}[/WebAction]\nChat text optional, [WebAction] REQUIRED."
-                } else {
-                    "[WebEmbed] Use [WebAction] with bubble."
-                }
-                val bridgeText = "[WebBridge]\n$merged\n\n$hint"
-                vm.handleMessageSend(
-                    content = listOf(UIMessagePart.Text(text = bridgeText)),
-                    answer = true,
-                )
-            }
-        }
-    }
-
     // Reverse channel: intercept [WebAction]{...}[/WebAction] from AI responses (only after generation completes)
     val lastMsg = conversation.currentMessages.lastOrNull()
     val reverseCtx = androidx.compose.ui.platform.LocalContext.current
@@ -562,18 +540,17 @@ private fun ChatPageContent(
                     kotlinx.coroutines.delay(1000L)
                     val hint = if (!bridgePromptSent.value) {
                         bridgePromptSent.value = true
-                        "[WebEmbed] IMPORTANT: You are co-browsing a webpage with the user RIGHT NOW. You MUST use [WebAction] tags in EVERY reply to show bubbles on the webpage. You should PROACTIVELY use js to interact with the page — scroll, click links, help navigate. Don't wait for the user to ask.\nFormat: [WebAction]{\"bubble\":{\"text\":\"msg\",\"type\":\"talk\"},\"js\":\"code\",\"description\":\"what you did\"}[/WebAction]\nbubble types: talk(pink) action(blue). js: any JS to operate the page.\nChat text optional, [WebAction] REQUIRED."
+                        "[WebEmbed] IMPORTANT: You are co-browsing a webpage with the user RIGHT NOW. You MUST use [WebAction] tags in EVERY reply. You should PROACTIVELY use js to interact with the page. Don't wait for the user to ask.\nFormat: [WebAction]{\\"bubble\\":{\\"text\\":\\"msg\\",\\"type\\":\\"talk\\"},\\"js\\":\\"code\\",\\"description\\":\\"what you did\\"}[/WebAction]\nbubble types: talk(pink) action(blue). js: any JS.\nChat text optional, [WebAction] REQUIRED."
                     } else {
-                        "[WebEmbed] Use [WebAction] with bubble. Be proactive with js."
+                        "[WebEmbed] Use [WebAction] with bubble. Be proactive."
                     }
                     val bridgeText = "[WebBridge]\n$message\n\n$hint"
-                        vm.handleMessageSend(
-                            content = listOf(
-                                UIMessagePart.Text(text = bridgeText)
-                            ),
-                            answer = true,
-                        )
-                    }
+                    vm.handleMessageSend(
+                        content = listOf(
+                            UIMessagePart.Text(text = bridgeText)
+                        ),
+                        answer = true,
+                    )
                 }
             },
             onWebViewReady = { wv -> embeddedWebView = wv },
