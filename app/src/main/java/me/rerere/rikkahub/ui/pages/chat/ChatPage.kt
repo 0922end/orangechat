@@ -277,11 +277,10 @@ private fun ChatPageContent(
     val embedWebViewVisible = embedWebViewUrl != null
     var embeddedWebView by androidx.compose.runtime.remember { mutableStateOf<android.webkit.WebView?>(null) }
 
-    // Bridge message aggregation buffer
-    val bridgeBuffer = androidx.compose.runtime.remember { mutableListOf<String>() }
-    val bridgeJob = androidx.compose.runtime.remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-
+    // Bridge: 1s debounce, direct send
+    val bridgeDebounceJob = androidx.compose.runtime.remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val bridgePromptSent = androidx.compose.runtime.remember { mutableStateOf(false) }
+    val executedWebActions = androidx.compose.runtime.remember { mutableSetOf<String>() }
 
     TTSAutoPlay(vm = vm, setting = setting, conversation = conversation)
 
