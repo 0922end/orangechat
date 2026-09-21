@@ -120,9 +120,19 @@ private val BRIDGE_LISTENER_SCRIPT = """
         setTimeout(function() { b.classList.add('fadeout'); setTimeout(function() { b.remove(); }, 500); }, 3500);
     };
 
+    // UTF-8 safe Base64 decode
+    window.ElianB64 = function(b64) {
+        try {
+            var bin = atob(b64);
+            var bytes = new Uint8Array(bin.length);
+            for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            return new TextDecoder('utf-8').decode(bytes);
+        } catch(e) { return b64; }
+    };
+
     window.ElianExecute = function(actionJson) {
         try {
-            var a = JSON.parse(actionJson);
+            var a = typeof actionJson === 'string' ? JSON.parse(actionJson) : actionJson;
             if (a.bubble) {
                 window.ElianShowBubble(a.bubble.text, a.bubble.type || 'talk');
                 window.ElianToast('Eli: ' + (a.bubble.text || '').substring(0,30), 'ai');
