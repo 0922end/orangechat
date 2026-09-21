@@ -160,14 +160,20 @@ private val BRIDGE_LISTENER_SCRIPT = """
     // === Page Content Extraction (for third-party pages) ===
     function extractPageContent() {
         var text = '';
-        var el = document.querySelector('article') || document.querySelector('main') || document.querySelector('.content') || document.body;
+        var el = document.querySelector('[data-testid="note-content"]') || document.querySelector('.note-content') || document.querySelector('.note-body') || document.querySelector('#detail-desc') || document.querySelector('.detail-desc') || document.querySelector('article') || document.querySelector('main') || document.querySelector('.content') || document.body;
         if (el) text = (el.innerText || '').substring(0, 3000);
+        var comments = [];
+        document.querySelectorAll('.comment-item .content, .comment-text, [data-testid="comment-content"]').forEach(function(c) {
+            if (c.innerText && c.innerText.length > 1 && comments.length < 15) comments.push(c.innerText.substring(0, 200));
+        });
         var imgs = [];
         document.querySelectorAll('img[alt]').forEach(function(img) {
             if (img.alt && img.alt.length > 2) imgs.push(img.alt.substring(0, 100));
         });
         if (imgs.length > 10) imgs = imgs.slice(0, 10);
-        return { type: 'page_content', url: location.href, title: document.title, content: text, images: imgs };
+        var result = { type: 'page_content', url: location.href, title: document.title, content: text, images: imgs };
+        if (comments.length > 0) result.comments = comments;
+        return result;
     }
 
     // === Unified bridge send with toast ===
