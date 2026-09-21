@@ -219,6 +219,9 @@ fun ChatEmbeddedWebView(
                 val webViewState = rememberWebViewState(
                     url = url,
                     interfaces = mapOf("ElianBridge" to bridge),
+                    settings = {
+                        userAgentString = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"
+                    },
                 )
 
                 // Inject bridge listener script when page finishes loading
