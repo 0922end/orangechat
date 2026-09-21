@@ -49,13 +49,6 @@ class ElianBridge(
     @JavascriptInterface
     fun postMessage(message: String) {
         android.os.Handler(android.os.Looper.getMainLooper()).post {
-            try {
-                android.widget.Toast.makeText(
-                    context,
-                    "Bridge: ${message.take(80)}",
-                    android.widget.Toast.LENGTH_SHORT
-                ).show()
-            } catch (_: Exception) {}
             onMessage(message)
         }
     }
