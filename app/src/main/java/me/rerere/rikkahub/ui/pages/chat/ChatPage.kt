@@ -338,10 +338,10 @@ private fun ChatPageContent(
                     .trim()
                 if (plainText.isNotBlank() && !executedWebActions.contains("bubble_${lastMsg.id}")) {
                     executedWebActions.add("bubble_${lastMsg.id}")
-                    val encoded = android.util.Base64.encodeToString(plainText.take(200).toByteArray(), android.util.Base64.NO_WRAP)
+                    val encoded = android.util.Base64.encodeToString(plainText.take(200).toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
                     wv.handler.post {
                         wv.evaluateJavascript(
-                            "try { window.ElianShowBubble(atob('$encoded'), 'ai'); } catch(e) {}",
+                            "try { window.ElianShowBubble(window.ElianB64('$encoded'), 'ai'); } catch(e) {}",
                             null
                         )
                     }
@@ -353,9 +353,9 @@ private fun ChatPageContent(
                     val descKey = "desc_${lastMsg.id}_${descText.hashCode()}"
                     if (!executedWebActions.contains(descKey)) {
                         executedWebActions.add(descKey)
-                        val descEncoded = android.util.Base64.encodeToString(descText.toByteArray(), android.util.Base64.NO_WRAP)
+                        val descEncoded = android.util.Base64.encodeToString(descText.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
                         wv.handler.post {
-                            wv.evaluateJavascript("try { window.ElianToast(atob('$descEncoded'), 'ai'); } catch(e) {}", null)
+                            wv.evaluateJavascript("try { window.ElianToast(window.ElianB64('$descEncoded'), 'ai'); } catch(e) {}", null)
                         }
                     }
                 }
