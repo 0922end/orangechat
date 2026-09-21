@@ -71,6 +71,7 @@ private val BRIDGE_LISTENER_SCRIPT = """
         .elian-bubble { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:99999; max-width:80%; padding:16px 24px; border-radius:16px; font-size:15px; line-height:1.5; opacity:0; animation:elianIn 0.3s ease forwards; pointer-events:none; box-shadow:0 8px 32px rgba(0,0,0,0.15); text-align:center; } \
         .elian-bubble.talk { background:#fff0f5; border:2px solid #ff69b4; color:#333; } \
         .elian-bubble.action { background:#f0f4ff; border:2px solid #6495ed; color:#555; font-style:italic; } \
+        .elian-bubble.ai { background:#E4F0FF; border:1.5px solid #C2D8F0; color:#6B9BD2; } \
         .elian-bubble.fadeout { animation:elianOut 0.5s ease forwards; } \
         @keyframes elianIn { from{opacity:0;transform:translate(-50%,-50%) scale(0.8)} to{opacity:1;transform:translate(-50%,-50%) scale(1)} } \
         @keyframes elianOut { from{opacity:1;transform:translate(-50%,-50%) scale(1)} to{opacity:0;transform:translate(-50%,-50%) scale(0.8)} } \
