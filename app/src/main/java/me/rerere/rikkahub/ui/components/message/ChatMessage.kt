@@ -546,25 +546,13 @@ private fun MessagePartsBlock(
                         }
 
                         // Auto-detect URLs in text and show preview cards
-                        // Short link conversion: xhslink.cn → xiaohongshu.com, b23.tv → bilibili.com
+                        // Short links (xhslink.cn / b23.tv) are kept as-is: WebView follows the 302
+                        // redirect to the real page. UA spoofing + scheme blocking handle the APP-scheme
+                        // interception and the "open in app" landing page.
                         val detectedUrls = remember(displayText) {
                             Regex("https?://[^\\s<>\"'\\]\\)]+")
                                 .findAll(displayText)
                                 .map { it.value }
-                                .map { url ->
-                                    when {
-                                        url.contains("xhslink.cn") -> {
-                                            // Extract path and convert to web URL
-                                            val path = Regex("xhslink\\.cn/([^\\s?#]+)").find(url)?.groupValues?.get(1) ?: ""
-                                            if (path.isNotBlank()) "https://www.xiaohongshu.com/explore/$path" else url
-                                        }
-                                        url.contains("b23.tv") -> {
-                                            // b23.tv short links load in WebView directly (302 redirect works with UA)
-                                            url
-                                        }
-                                        else -> url
-                                    }
-                                }
                                 .distinct()
                                 .take(5)
                                 .toList()
