@@ -148,6 +148,15 @@ private val BRIDGE_LISTENER_SCRIPT = """
         } catch(ex) {}
     };
 
+    // === Expose content extraction for AI on-demand抓取 ===
+    window.ElianExtractNow = function() {
+        try {
+            var pc = extractPageContent();
+            ElianBridge.postMessage(JSON.stringify(pc));
+            return pc.content.length;
+        } catch(ex) { return -1; }
+    };
+
     // === ElianGetState protocol (for custom game pages) ===
     window.ElianQueryState = function() {
         if (typeof window.ElianGetState === 'function') {
