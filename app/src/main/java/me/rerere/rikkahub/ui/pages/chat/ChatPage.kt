@@ -277,6 +277,11 @@ private fun ChatPageContent(
     val embedWebViewVisible = embedWebViewUrl != null
     var embeddedWebView by androidx.compose.runtime.remember { mutableStateOf<android.webkit.WebView?>(null) }
 
+    // Disable drawer gesture when WebView is open
+    androidx.compose.runtime.LaunchedEffect(embedWebViewVisible) {
+        onSplitScreenChanged(embedWebViewVisible)
+    }
+
     // Bridge: 1s debounce, direct send
     val bridgeDebounceJob = androidx.compose.runtime.remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val bridgePromptSent = androidx.compose.runtime.remember { mutableStateOf(false) }
