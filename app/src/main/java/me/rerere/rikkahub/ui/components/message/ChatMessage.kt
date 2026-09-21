@@ -393,8 +393,9 @@ private fun MessagePartsBlock(
                                 .replace(Regex("\\[zip:[^\\]]+\\]", RegexOption.IGNORE_CASE), "")
                                 .replace(Regex("\\[WebEmbed].*", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
                                 .replace(Regex("\\[WebBridge]\\n?", RegexOption.IGNORE_CASE), "")
-                                .replace(Regex("\\{\"type\":\"(ai_action|page_loaded|navigation|submit)\"[^}]*\\}", RegexOption.DOT_MATCHES_ALL), "")
-                                .replace(Regex("\\{\"type\":\"click\",\"tag\":\"[^\"]*\",\"text\":\"([^\"]*)\",\"href\":\"[^\"]*\",\"id\":\"[^\"]*\",\"className\":\"[^\"]*\"\\}")) { match ->
+                                .replace(Regex("\\[WebQuery].*?\\[/WebQuery]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+                                .replace(Regex("\\{\"type\":\"(ai_action|page_loaded|navigation|submit|page_content|state_response|idle)\"[^}]*\\}", RegexOption.DOT_MATCHES_ALL), "")
+                                .replace(Regex("\\{\"type\":\"click\",\"tag\":\"[^\"]*\",\"text\":\"([^\"]*)\",\"href\":\"[^\"]*\",\"id\":\"[^\"]*\",\"className\":\"[^\"]*\"(,\"state\":[^}]*)?\\}")) { match ->
                                     val clickText = match.groupValues[1].take(50)
                                     if (clickText.isNotBlank()) "\u70b9\u51fb\u4e86\u300c${clickText}\u300d" else ""
                                 }
