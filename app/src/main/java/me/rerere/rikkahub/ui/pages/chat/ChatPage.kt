@@ -293,14 +293,28 @@ private fun ChatPageContent(
         if (lastMsg != null && lastMsg.role == me.rerere.ai.core.MessageRole.ASSISTANT) {
             val textParts = lastMsg.parts.filterIsInstance<UIMessagePart.Text>()
             val fullText = textParts.joinToString("") { it.text }
-            if (fullText.contains("[WebAction]") && wv != null) {
-                val regex = Regex("""\[WebAction](.*?)\[/WebAction]""", RegexOption.DOT_MATCHES_ALL)
-                regex.findAll(fullText).forEach { match ->
-                    val actionJson = match.groupValues[1].trim()
-                    if (!executedWebActions.contains(actionJson)) {
-                        executedWebActions.add(actionJson)
-                        val js = "try { window.ElianExecute('" + actionJson.replace("'", "\\'").replace("\n", " ") + "'); } catch(e) {}"
-                        wv.handler.post { wv.evaluateJavascript(js, null) }
+            if (wv != null) {
+                // Handle [WebAction] - AI executes JS on web page
+                if (fullText.contains("[WebAction]")) {
+                    val regex = Regex("""\[WebAction](.*?)\[/WebAction]""", RegexOption.DOT_MATCHES_ALL)
+                    regex.findAll(fullText).forEach { match ->
+                        val actionJson = match.groupValues[1].trim()
+                        if (!executedWebActions.contains(actionJson)) {
+                            executedWebActions.add(actionJson)
+                            val js = "try { window.ElianExecute('" + actionJson.replace("'", "\\'").replace("\n", " ") + "'); } catch(e) {}"
+                            wv.handler.post { wv.evaluateJavascript(js, null) }
+                        }
+                    }
+                }
+                // Handle [WebQuery] - AI requests page state
+                if (fullText.contains("[WebQuery]")) {
+                    val qRegex = Regex("""\[WebQuery](.*?)\[/WebQuery]""", RegexOption.DOT_MATCHES_ALL)
+                    qRegex.findAll(fullText).forEach { match ->
+                        val queryId = match.groupValues[1].trim()
+                        if (!executedWebActions.contains("query_$queryId")) {
+                            executedWebActions.add("query_$queryId")
+                            wv.handler.post { wv.evaluateJavascript("try { window.ElianQueryState(); } catch(e) {}", null) }
+                        }
                     }
                 }
             }
