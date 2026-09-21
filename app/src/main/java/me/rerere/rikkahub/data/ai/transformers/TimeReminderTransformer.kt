@@ -29,7 +29,7 @@ object TimeReminderTransformer : InputMessageTransformer {
         ctx: TransformerContext,
         messages: List<UIMessage>,
     ): List<UIMessage> {
-        if (!ctx.assistant.enableTimeReminder) return messages
+        // Force time reminder injection regardless of assistant setting
         return applyTimeReminder(messages)
     }
 }
