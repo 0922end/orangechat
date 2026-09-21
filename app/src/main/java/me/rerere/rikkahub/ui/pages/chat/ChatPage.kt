@@ -306,14 +306,14 @@ private fun ChatPageContent(
                         val actionJson = match.groupValues[1].trim()
                         if (!executedWebActions.contains(actionJson)) {
                             executedWebActions.add(actionJson)
-                            val encoded = android.util.Base64.encodeToString(actionJson.toByteArray(), android.util.Base64.NO_WRAP)
-                            val js = "try { window.ElianExecute(atob('$encoded')); } catch(e) { console.error('ElianExecute error', e); }"
+                            val encoded = android.util.Base64.encodeToString(actionJson.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
+                            val js = "try { window.ElianExecute(window.ElianB64('$encoded')); } catch(e) { console.error('ElianExecute error', e); }"
                             wv.handler.post { wv.evaluateJavascript(js, null) }
                             // Show description as blue toast on webpage
                             val desc = Regex(""""description"\s*:\s*"([^"]*)"""").find(actionJson)?.groupValues?.get(1)
                             if (!desc.isNullOrBlank()) {
-                                val descEncoded = android.util.Base64.encodeToString(desc.toByteArray(), android.util.Base64.NO_WRAP)
-                                wv.handler.post { wv.evaluateJavascript("try { window.ElianToast(atob('$descEncoded'), 'ai'); } catch(e) {}", null) }
+                                val descEncoded = android.util.Base64.encodeToString(desc.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
+                                wv.handler.post { wv.evaluateJavascript("try { window.ElianToast(window.ElianB64('$descEncoded'), 'ai'); } catch(e) {}", null) }
                             }
                         }
                     }
