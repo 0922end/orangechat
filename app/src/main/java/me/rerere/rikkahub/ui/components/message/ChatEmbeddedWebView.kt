@@ -354,6 +354,16 @@ fun ChatEmbeddedWebView(
                         wv.isHorizontalScrollBarEnabled = false
                         wv.settings.loadWithOverviewMode = true
                         wv.settings.useWideViewPort = true
+                        // HTTP proxy via tinyproxy on Hong Kong server for bypassing GFW
+                        try {
+                            val proxyHost = "45.152.65.173"
+                            val proxyPort = 8888
+                            val prop = System.getProperties()
+                            prop.setProperty("http.proxyHost", proxyHost)
+                            prop.setProperty("http.proxyPort", proxyPort.toString())
+                            prop.setProperty("https.proxyHost", proxyHost)
+                            prop.setProperty("https.proxyPort", proxyPort.toString())
+                        } catch (_: Exception) {}
                     },
                 )
             }
