@@ -354,15 +354,18 @@ fun ChatEmbeddedWebView(
                         wv.isHorizontalScrollBarEnabled = false
                         wv.settings.loadWithOverviewMode = true
                         wv.settings.useWideViewPort = true
-                        // HTTP proxy via tinyproxy on Hong Kong server for bypassing GFW
+                        // WebView-only proxy via ProxyController (API 29+)
                         try {
-                            val proxyHost = "45.152.65.173"
-                            val proxyPort = 8888
-                            val prop = System.getProperties()
-                            prop.setProperty("http.proxyHost", proxyHost)
-                            prop.setProperty("http.proxyPort", proxyPort.toString())
-                            prop.setProperty("https.proxyHost", proxyHost)
-                            prop.setProperty("https.proxyPort", proxyPort.toString())
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                                val proxyConfig = android.webkit.ProxyConfig.Builder()
+                                    .addProxyRule("45.152.65.173:8888")
+                                    .build()
+                                android.webkit.ProxyController.getInstance().setProxyOverride(
+                                    proxyConfig,
+                                    { it.run() },
+                                    { }
+                                )
+                            }
                         } catch (_: Exception) {}
                     },
                 )
