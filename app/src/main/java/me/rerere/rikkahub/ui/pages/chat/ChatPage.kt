@@ -587,6 +587,15 @@ private fun ChatPageContent(
                 embeddedWebView?.handler?.post {
                     embeddedWebView?.evaluateJavascript("try { window.ElianClearIdle(); } catch(e) {}", null)
                 }
+                // Clear WebView proxy
+                try {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                        android.webkit.ProxyController.getInstance().clearProxyOverride(
+                            { it.run() },
+                            { }
+                        )
+                    }
+                } catch (_: Exception) {}
                 embedWebViewUrl = null
                 embeddedWebView = null
             },
