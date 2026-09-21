@@ -53,6 +53,16 @@ internal class MyWebChromeClient(private val state: WebViewState) : WebChromeCli
 }
 
 internal class MyWebViewClient(private val state: WebViewState) : WebViewClient() {
+    override fun shouldOverrideUrlLoading(view: WebView?, request: android.webkit.WebResourceRequest?): Boolean {
+        val url = request?.url?.toString() ?: return false
+        // Allow http and https, block everything else (xhsdiscover://, bilibili://, etc.)
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            Log.d(TAG, "Blocked non-http scheme: $url")
+            return true
+        }
+        return false
+    }
+
     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
         super.onPageStarted(view, url, favicon)
         state.isLoading = true
