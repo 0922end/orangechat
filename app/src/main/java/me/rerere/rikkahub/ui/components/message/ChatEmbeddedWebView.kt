@@ -231,6 +231,14 @@ private val BRIDGE_LISTENER_SCRIPT = """
     document.addEventListener('keydown', resetIdle, true);
     resetIdle();
 
+    // === Clear idle on page leave ===
+    window.ElianClearIdle = function() {
+        if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+    };
+    document.addEventListener('visibilitychange', function() {
+        if (document.hidden) window.ElianClearIdle();
+    });
+
     // === Page loaded + content extraction ===
     bridgeSend({ type:'page_loaded', title:document.title, url:location.href });
     setTimeout(function() {
