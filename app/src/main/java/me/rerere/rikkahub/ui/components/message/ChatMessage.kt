@@ -400,7 +400,8 @@ private fun MessagePartsBlock(
                                     if (clickText.isNotBlank()) "\u70b9\u51fb\u4e86\u300c${clickText}\u300d" else ""
                                 }
                             // Extract WebAction bubble text + description for clean display
-                            val waRegex = Regex("\\[WebAction](.*?)\\[/WebAction]", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+                            // Handle both closed [WebAction]...[/WebAction] and unclosed [WebAction]... to end
+                            val waRegex = Regex("\\[WebAction](.*?)(?:\\[/WebAction]|$)", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
                             result = waRegex.replace(result) { match ->
                                 val json = match.groupValues[1].trim()
                                 val bubbleText = Regex("\"text\"\\s*:\\s*\"([^\"]*)\"").find(json)?.groupValues?.get(1) ?: ""
