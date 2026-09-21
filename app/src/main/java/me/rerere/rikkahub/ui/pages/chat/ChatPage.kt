@@ -333,13 +333,25 @@ private fun ChatPageContent(
                     .trim()
                 if (plainText.isNotBlank() && !executedWebActions.contains("bubble_${lastMsg.id}")) {
                     executedWebActions.add("bubble_${lastMsg.id}")
-                    val bubbleText = plainText.take(200).replace("'", "\\'")
-                        .replace("\n", " ")
+                    val encoded = android.util.Base64.encodeToString(plainText.take(200).toByteArray(), android.util.Base64.NO_WRAP)
                     wv.handler.post {
                         wv.evaluateJavascript(
-                            "try { window.ElianShowBubble('$bubbleText', 'talk'); } catch(e) {}",
+                            "try { window.ElianShowBubble(atob('$encoded'), 'ai'); } catch(e) {}",
                             null
                         )
+                    }
+                }
+                // Show 【description】 as blue toast on webpage
+                val descRegex = Regex("\u3010([^\u3011]+)\u3011")
+                descRegex.findAll(fullText).forEach { match ->
+                    val descText = match.groupValues[1]
+                    val descKey = "desc_${lastMsg.id}_${descText.hashCode()}"
+                    if (!executedWebActions.contains(descKey)) {
+                        executedWebActions.add(descKey)
+                        val descEncoded = android.util.Base64.encodeToString(descText.toByteArray(), android.util.Base64.NO_WRAP)
+                        wv.handler.post {
+                            wv.evaluateJavascript("try { window.ElianToast(atob('$descEncoded'), 'ai'); } catch(e) {}", null)
+                        }
                     }
                 }
             }
