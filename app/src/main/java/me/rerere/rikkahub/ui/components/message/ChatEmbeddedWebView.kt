@@ -354,19 +354,8 @@ fun ChatEmbeddedWebView(
                         wv.isHorizontalScrollBarEnabled = false
                         wv.settings.loadWithOverviewMode = true
                         wv.settings.useWideViewPort = true
-                        // WebView-only proxy via ProxyController (API 29+)
-                        try {
-                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                                val proxyConfig = android.webkit.ProxyConfig.Builder()
-                                    .addProxyRule("45.152.65.173:8888")
-                                    .build()
-                                android.webkit.ProxyController.getInstance().setProxyOverride(
-                                    proxyConfig,
-                                    { it.run() },
-                                    { }
-                                )
-                            }
-                        } catch (_: Exception) {}
+                        // TODO: WebView proxy via androidx.webkit ProxyController
+                        // Requires adding androidx.webkit dependency to build.gradle
                     },
                 )
             }
