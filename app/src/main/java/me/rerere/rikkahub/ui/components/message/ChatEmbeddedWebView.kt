@@ -65,7 +65,7 @@ private val BRIDGE_LISTENER_SCRIPT = """
     if (window.__elianBridgeInjected) return;
     window.__elianBridgeInjected = true;
 
-    // === Elian Bubble System ===
+    // === Elian Style System (Bubble + Toast Bar) ===
     var style = document.createElement('style');
     style.textContent = '\
         .elian-bubble { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:99999; max-width:80%; padding:16px 24px; border-radius:16px; font-size:15px; line-height:1.5; opacity:0; animation:elianIn 0.3s ease forwards; pointer-events:none; box-shadow:0 8px 32px rgba(0,0,0,0.15); text-align:center; } \
@@ -74,9 +74,40 @@ private val BRIDGE_LISTENER_SCRIPT = """
         .elian-bubble.fadeout { animation:elianOut 0.5s ease forwards; } \
         @keyframes elianIn { from{opacity:0;transform:translate(-50%,-50%) scale(0.8)} to{opacity:1;transform:translate(-50%,-50%) scale(1)} } \
         @keyframes elianOut { from{opacity:1;transform:translate(-50%,-50%) scale(1)} to{opacity:0;transform:translate(-50%,-50%) scale(0.8)} } \
+        .elian-toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:99998; padding:8px 18px; border-radius:20px; font-size:13px; opacity:0; animation:elianToastIn 0.25s ease forwards; pointer-events:none; max-width:85%; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } \
+        .elian-toast.user { background:#FFE4EC; color:#D4728C; border:1px solid #F5C2D1; } \
+        .elian-toast.ai { background:#E4F0FF; color:#6B9BD2; border:1px solid #C2D8F0; } \
+        .elian-toast.fadeout { animation:elianToastOut 0.3s ease forwards; } \
+        @keyframes elianToastIn { from{opacity:0;transform:translateX(-50%) translateY(10px)} to{opacity:1;transform:translateX(-50%) translateY(0)} } \
+        @keyframes elianToastOut { from{opacity:1} to{opacity:0} } \
     ';
     document.head.appendChild(style);
 
+    // === Toast Bar (pink for user, blue for AI) ===
+    window.ElianToast = function(text, direction) {
+        var old = document.querySelector('.elian-toast');
+        if (old) old.remove();
+        var t = document.createElement('div');
+        t.className = 'elian-toast ' + (direction || 'user');
+        t.textContent = (direction === 'ai' ? '\u2190 ' : '\u2192 ') + text;
+        document.body.appendChild(t);
+        setTimeout(function() { t.classList.add('fadeout'); setTimeout(function() { t.remove(); }, 300); }, 2000);
+    };
+
+    function toastForUser(data) {
+        var t = data.type || data.action || '';
+        switch(t) {
+            case 'click': return '\u70B9\u51FB\u4E86\u300C' + (data.text || data.tag || '').substring(0,30) + '\u300D';
+            case 'submit': return '\u63D0\u4EA4\u4E86\u8868\u5355';
+            case 'navigation': return '\u8DF3\u8F6C\u9875\u9762';
+            case 'page_loaded': return '\u9875\u9762\u5DF2\u52A0\u8F7D';
+            case 'page_content': return '\u5185\u5BB9\u5DF2\u6293\u53D6';
+            case 'idle': return '\u7B49\u5F85\u4E2D...';
+            default: return t;
+        }
+    }
+
+    // === Elian Bubble System ===
     window.ElianShowBubble = function(text, type) {
         type = type || 'talk';
         var old = document.querySelector('.elian-bubble');
@@ -93,6 +124,7 @@ private val BRIDGE_LISTENER_SCRIPT = """
             var a = JSON.parse(actionJson);
             if (a.bubble) {
                 window.ElianShowBubble(a.bubble.text, a.bubble.type || 'talk');
+                window.ElianToast('Eli: ' + (a.bubble.text || '').substring(0,30), 'ai');
                 try {
                     ElianBridge.postMessage(JSON.stringify({
                         type: 'ai_action',
@@ -103,6 +135,7 @@ private val BRIDGE_LISTENER_SCRIPT = """
             }
             if (a.js) {
                 eval(a.js);
+                window.ElianToast('Eli: ' + (a.description || '\u6267\u884C\u64CD\u4F5C'), 'ai');
                 try {
                     ElianBridge.postMessage(JSON.stringify({
                         type: 'ai_action',
@@ -114,6 +147,38 @@ private val BRIDGE_LISTENER_SCRIPT = """
         } catch(ex) {}
     };
 
+    // === ElianGetState protocol (for custom game pages) ===
+    window.ElianQueryState = function() {
+        if (typeof window.ElianGetState === 'function') {
+            try {
+                var state = window.ElianGetState();
+                ElianBridge.postMessage(JSON.stringify({ type: 'state_response', state: state }));
+            } catch(ex) {}
+        }
+    };
+
+    // === Page Content Extraction (for third-party pages) ===
+    function extractPageContent() {
+        var text = '';
+        var el = document.querySelector('article') || document.querySelector('main') || document.querySelector('.content') || document.body;
+        if (el) text = (el.innerText || '').substring(0, 3000);
+        var imgs = [];
+        document.querySelectorAll('img[alt]').forEach(function(img) {
+            if (img.alt && img.alt.length > 2) imgs.push(img.alt.substring(0, 100));
+        });
+        if (imgs.length > 10) imgs = imgs.slice(0, 10);
+        return { type: 'page_content', url: location.href, title: document.title, content: text, images: imgs };
+    }
+
+    // === Unified bridge send with toast ===
+    function bridgeSend(data) {
+        try {
+            var isAi = data.type === 'ai_action';
+            window.ElianToast(toastForUser(data), isAi ? 'ai' : 'user');
+            ElianBridge.postMessage(JSON.stringify(data));
+        } catch(ex) {}
+    }
+
     // === User Interaction Listeners (with 1s debounce) ===
     var lastClickTime = 0;
     document.addEventListener('click', function(e) {
@@ -121,31 +186,48 @@ private val BRIDGE_LISTENER_SCRIPT = """
         if (now - lastClickTime < 1000) return;
         lastClickTime = now;
         var el = e.target;
+        var state = null;
+        if (typeof window.ElianGetState === 'function') { try { state = window.ElianGetState(); } catch(ex) {} }
         var info = {
             type: 'click',
             tag: el.tagName,
             text: (el.innerText || '').substring(0, 200),
             href: el.href || (el.closest('a') ? el.closest('a').href : ''),
             id: el.id || '',
-            className: (el.className || '').substring(0, 100)
+            className: (el.className || '').substring(0, 100),
+            state: state
         };
-        try { ElianBridge.postMessage(JSON.stringify(info)); } catch(ex) {}
+        bridgeSend(info);
     }, true);
 
     document.addEventListener('submit', function(e) {
-        var info = { type: 'submit', action: e.target.action || '', method: e.target.method || '' };
-        try { ElianBridge.postMessage(JSON.stringify(info)); } catch(ex) {}
+        bridgeSend({ type: 'submit', action: e.target.action || '', method: e.target.method || '' });
     }, true);
 
     var lastTitle = document.title;
     new MutationObserver(function() {
         if (document.title !== lastTitle) {
             lastTitle = document.title;
-            try { ElianBridge.postMessage(JSON.stringify({ type:'navigation', title:document.title, url:location.href })); } catch(ex) {}
+            bridgeSend({ type:'navigation', title:document.title, url:location.href });
         }
     }).observe(document.querySelector('title') || document.head, { childList:true, subtree:true, characterData:true });
 
-    try { ElianBridge.postMessage(JSON.stringify({ type:'page_loaded', title:document.title, url:location.href })); } catch(ex) {}
+    // === Idle Detection (30s no interaction) ===
+    var idleTimer = null;
+    function resetIdle() {
+        if (idleTimer) clearTimeout(idleTimer);
+        idleTimer = setTimeout(function() {
+            bridgeSend({ type: 'idle', seconds: 30, url: location.href });
+        }, 30000);
+    }
+    document.addEventListener('click', resetIdle, true);
+    document.addEventListener('scroll', resetIdle, true);
+    document.addEventListener('keydown', resetIdle, true);
+    resetIdle();
+
+    // === Page loaded + content extraction ===
+    bridgeSend({ type:'page_loaded', title:document.title, url:location.href });
+    setTimeout(function() { try { ElianBridge.postMessage(JSON.stringify(extractPageContent())); } catch(ex) {} }, 1500);
 })();
 """.trimIndent()
 
