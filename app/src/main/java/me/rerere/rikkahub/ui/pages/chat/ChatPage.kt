@@ -541,6 +541,10 @@ private fun ChatPageContent(
             url = embedWebViewUrl ?: "",
             visible = embedWebViewVisible,
             onDismiss = {
+                // Clear idle timer when leaving WebView
+                embeddedWebView?.handler?.post {
+                    embeddedWebView?.evaluateJavascript("try { window.ElianClearIdle(); } catch(e) {}", null)
+                }
                 embedWebViewUrl = null
                 embeddedWebView = null
             },
