@@ -233,7 +233,16 @@ private val BRIDGE_LISTENER_SCRIPT = """
 
     // === Page loaded + content extraction ===
     bridgeSend({ type:'page_loaded', title:document.title, url:location.href });
-    setTimeout(function() { try { ElianBridge.postMessage(JSON.stringify(extractPageContent())); } catch(ex) {} }, 1500);
+    setTimeout(function() {
+        try {
+            var pc = extractPageContent();
+            ElianBridge.postMessage(JSON.stringify(pc));
+            // SPA retry: if content is too short, try again at 6s
+            if (pc.content.length < 100) {
+                setTimeout(function() { try { ElianBridge.postMessage(JSON.stringify(extractPageContent())); } catch(ex2) {} }, 3000);
+            }
+        } catch(ex) {}
+    }, 3000);
 })();
 """.trimIndent()
 
