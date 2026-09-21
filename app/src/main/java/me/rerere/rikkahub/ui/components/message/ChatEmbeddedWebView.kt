@@ -344,6 +344,16 @@ fun ChatEmbeddedWebView(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
+                    onCreated = { wv ->
+                        // Smooth scrolling: hardware acceleration + disable overscroll
+                        wv.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
+                        wv.overScrollMode = android.view.View.OVER_SCROLL_NEVER
+                        wv.isNestedScrollingEnabled = false
+                        wv.isVerticalScrollBarEnabled = true
+                        wv.isHorizontalScrollBarEnabled = false
+                        wv.settings.loadWithOverviewMode = true
+                        wv.settings.useWideViewPort = true
+                    },
                 )
             }
         }
