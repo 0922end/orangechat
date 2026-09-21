@@ -317,6 +317,24 @@ private fun ChatPageContent(
                         }
                     }
                 }
+                // Auto-bubble: show AI plain text on webpage when WebView is open
+                val plainText = fullText
+                    .replace(Regex("""\[WebAction].*?\[/WebAction]""", RegexOption.DOT_MATCHES_ALL), "")
+                    .replace(Regex("""\[WebQuery].*?\[/WebQuery]""", RegexOption.DOT_MATCHES_ALL), "")
+                    .replace(Regex("""\[WebEmbed].*""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+                    .replace(Regex("""\[WebBridge]\n?""", RegexOption.IGNORE_CASE), "")
+                    .trim()
+                if (plainText.isNotBlank() && !executedWebActions.contains("bubble_${lastMsg.id}")) {
+                    executedWebActions.add("bubble_${lastMsg.id}")
+                    val bubbleText = plainText.take(200).replace("'", "\\'")
+                        .replace("\n", " ")
+                    wv.handler.post {
+                        wv.evaluateJavascript(
+                            "try { window.ElianShowBubble('$bubbleText', 'talk'); } catch(e) {}",
+                            null
+                        )
+                    }
+                }
             }
         }
     }
