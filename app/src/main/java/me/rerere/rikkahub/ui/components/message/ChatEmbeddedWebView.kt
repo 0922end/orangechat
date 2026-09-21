@@ -164,8 +164,8 @@ private val BRIDGE_LISTENER_SCRIPT = """
         var el = document.querySelector('[data-testid="note-content"]') || document.querySelector('.note-content') || document.querySelector('.note-body') || document.querySelector('#detail-desc') || document.querySelector('.detail-desc') || document.querySelector('article') || document.querySelector('main') || document.querySelector('.content') || document.body;
         if (el) text = (el.innerText || '').substring(0, 3000);
         var comments = [];
-        document.querySelectorAll('.comment-item .content, .comment-text, [data-testid="comment-content"]').forEach(function(c) {
-            if (c.innerText && c.innerText.length > 1 && comments.length < 15) comments.push(c.innerText.substring(0, 200));
+        document.querySelectorAll('.comment-item .content, .comment-text, [data-testid="comment-content"], .comments-container .content, .comment-inner .content, .note-comment .content').forEach(function(c) {
+            if (c.innerText && c.innerText.length > 1 && comments.length < 20) comments.push(c.innerText.substring(0, 200));
         });
         var imgs = [];
         document.querySelectorAll('img[alt]').forEach(function(img) {
