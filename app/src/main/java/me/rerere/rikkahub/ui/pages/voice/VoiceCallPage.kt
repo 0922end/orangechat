@@ -252,15 +252,25 @@ fun VoiceCallPage(
                 }
             }
 
-            // 摄像头预览小窗 (视频开启时显示)
+            // 摄像头预览小窗 (视频开启时显示, 可拖动)
             if (uiState.isVideoEnabled && boundService != null) {
+                var offsetX by remember { mutableStateOf(0f) }
+                var offsetY by remember { mutableStateOf(0f) }
                 Box(
                     modifier = Modifier
+                        .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
                         .padding(horizontal = 24.dp)
                         .size(width = 120.dp, height = 160.dp)
                         .clip(RoundedCornerShape(16.dp))
                         .border(2.dp, accentColor.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
                         .align(Alignment.End)
+                        .pointerInput(Unit) {
+                            detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                offsetX += dragAmount.x
+                                offsetY += dragAmount.y
+                            }
+                        }
                 ) {
                     AndroidView(
                         factory = { ctx ->
