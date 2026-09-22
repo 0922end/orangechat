@@ -13,6 +13,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import me.rerere.ai.core.MessageRole
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.model.Conversation
+import me.rerere.rikkahub.service.VoiceCallService
 import me.rerere.rikkahub.ui.context.LocalTTSState
 import me.rerere.rikkahub.utils.extractQuotedContentAsText
 
