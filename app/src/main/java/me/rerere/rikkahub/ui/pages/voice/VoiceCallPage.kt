@@ -62,6 +62,7 @@ import me.rerere.hugeicons.stroke.Video01
 import me.rerere.hugeicons.stroke.VideoOff
 // import me.rerere.hugeicons.stroke.RefreshSquare  // TODO: find correct icon name
 import me.rerere.rikkahub.service.VoiceCallService
+import me.rerere.rikkahub.ui.components.ui.permission.PermissionCamera
 import me.rerere.rikkahub.ui.components.ui.permission.PermissionRecordAudio
 import me.rerere.rikkahub.ui.components.ui.permission.rememberPermissionState
 import androidx.camera.view.PreviewView
