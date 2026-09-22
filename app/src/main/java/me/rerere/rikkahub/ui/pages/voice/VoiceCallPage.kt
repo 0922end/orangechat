@@ -276,6 +276,7 @@ fun VoiceCallPage(
                         modifier = Modifier.fillMaxSize()
                     )
                 }
+            }
 
             // 字幕区: 按状态切换显示谁的字幕
             // - 聆听/思考: 显示用户刚说的话 (思考时保留, 让用户确认 AI 听到了什么)
