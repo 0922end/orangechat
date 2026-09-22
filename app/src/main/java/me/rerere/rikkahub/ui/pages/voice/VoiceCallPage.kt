@@ -330,7 +330,11 @@ fun VoiceCallPage(
                     icon = if (uiState.isVideoEnabled) HugeIcons.Video01 else HugeIcons.VideoOff,
                     contentDescription = "视频",
                     onClick = {
-                        boundService?.toggleVideo()
+                        if (!uiState.isVideoEnabled && !cameraPermission.allRequiredPermissionsGranted) {
+                            cameraPermission.requestPermissions()
+                        } else {
+                            boundService?.toggleVideo()
+                        }
                     },
                     backgroundColor = if (uiState.isVideoEnabled) {
                         Color(0xFF4CAF50).copy(alpha = 0.6f)
