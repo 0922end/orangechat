@@ -68,8 +68,12 @@ import me.rerere.rikkahub.ui.components.ui.permission.rememberPermissionState
 import androidx.camera.view.PreviewView
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import kotlin.uuid.Uuid
 
 private const val TAG = "VoiceCallPage"
