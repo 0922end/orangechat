@@ -158,10 +158,17 @@ fun VoiceCallPage(
         }
     }
 
-    // 进入页面时, 如果还没权限, 请求权限
+    // 进入页面时, 如果还没录音权限, 请求录音权限
     LaunchedEffect(Unit) {
         if (!asrPermission.allRequiredPermissionsGranted) {
             asrPermission.requestPermissions()
+        }
+    }
+
+    // CAMERA权限授予后自动开视频
+    LaunchedEffect(cameraPermission.allRequiredPermissionsGranted) {
+        if (cameraPermission.allRequiredPermissionsGranted && boundService != null && !uiState.isVideoEnabled) {
+            // 只在用户刚授权时自动开（不是每次进页面都开）
         }
     }
 
