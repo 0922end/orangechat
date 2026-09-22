@@ -864,17 +864,20 @@ class VoiceCallService : Service(), KoinComponent {
                     .build()
 
                 imageAnalysis.setAnalyzer(java.util.concurrent.Executors.newSingleThreadExecutor()) { imageProxy ->
-                    // 每 5 秒才处理一帧
-                    // 实际节流在 frameJob 里做
                     sendFrameToServer(imageProxy)
                     imageProxy.close()
                 }
+
+                // Preview use case for UI display
+                val preview = Preview.Builder().build()
+                preview.setSurfaceProvider(previewSurfaceProvider)
+                cameraPreview = preview
 
                 provider.unbindAll()
                 val lifecycleOwner = ServiceLifecycleOwner()
                 serviceLifecycleOwner = lifecycleOwner
                 lifecycleOwner.start()
-                provider.bindToLifecycle(lifecycleOwner, cameraSelector, imageAnalysis)
+                provider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, imageAnalysis)
 
                 // 启动帧节流: 每5秒发一帧
                 frameJob?.cancel()
