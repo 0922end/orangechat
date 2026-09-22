@@ -940,6 +940,7 @@ class VoiceCallService : Service(), KoinComponent {
         serviceLifecycleOwner?.stop()
         serviceLifecycleOwner = null
         cameraProvider = null
+        cameraPreview = null
         Log.d(TAG, "Camera stopped")
     }
 
