@@ -68,6 +68,7 @@ import me.rerere.rikkahub.ui.components.ui.permission.rememberPermissionState
 import androidx.camera.view.PreviewView
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import kotlin.uuid.Uuid
 
