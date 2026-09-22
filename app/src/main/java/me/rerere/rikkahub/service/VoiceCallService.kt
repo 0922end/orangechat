@@ -133,7 +133,7 @@ class VoiceCallService : Service(), KoinComponent {
     private var serviceLifecycleOwner: ServiceLifecycleOwner? = null
 
     // pai-voice 服务器地址 (暂时硬编码, 以后移到设置页)
-    private val paiVoiceWsUrl: String = "ws://101.42.108.110:8780"
+    private val paiVoiceWsUrl: String = "ws://45.152.65.173:8780"
     private val paiVoiceToken: String = "elian2026"
 
     companion object {
