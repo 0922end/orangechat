@@ -124,6 +124,12 @@ class VoiceCallService : Service(), KoinComponent {
     private var frameJob: Job? = null
     private var isVideoEnabled: Boolean = false
     private var isFrontCamera: Boolean = true
+    private var cameraPreview: Preview? = null
+    var previewSurfaceProvider: Preview.SurfaceProvider? = null
+        set(value) {
+            field = value
+            cameraPreview?.setSurfaceProvider(value)
+        }
     private var serviceLifecycleOwner: ServiceLifecycleOwner? = null
 
     // pai-voice 服务器地址 (暂时硬编码, 以后移到设置页)
