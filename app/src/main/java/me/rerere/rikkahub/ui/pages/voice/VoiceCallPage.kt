@@ -110,8 +110,9 @@ fun VoiceCallPage(
     val context = LocalContext.current
     var boundService by remember { mutableStateOf<VoiceCallService?>(null) }
 
-    // 录音权限
+    // 录音权限 + 摄像头权限
     val asrPermission = rememberPermissionState(PermissionRecordAudio)
+    val cameraPermission = rememberPermissionState(PermissionCamera)
 
     val connection = remember {
         object : ServiceConnection {
