@@ -25,6 +25,8 @@ fun TTSAutoPlay(vm: ChatVM, setting: Settings, conversation: Conversation) {
     val updatedSetting by rememberUpdatedState(setting)
     LaunchedEffect(Unit) {
         vm.generationDoneFlow.collect { conversationId ->
+            // 语音通话进行中时跳过，避免两个TTS同时播放
+            if (VoiceCallService.activeConversationId.value != null) return@collect
             if (updatedSetting.displaySetting.autoPlayTTSAfterGeneration) {
                 val lastMessage = currentConversation.currentMessages.lastOrNull()
                 if (lastMessage != null && lastMessage.role == MessageRole.ASSISTANT) {
