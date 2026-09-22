@@ -604,13 +604,6 @@ class VoiceCallService : Service(), KoinComponent {
                     result.add(sentence)
                 }
                 current.clear()
-            } else if (current.length >= 20) {
-                // 超过20字没标点也先发
-                val sentence = current.toString().trim()
-                if (sentence.isNotEmpty()) {
-                    result.add(sentence)
-                }
-                current.clear()
             }
         }
         // 保存未完成的部分 (不朗读, 等下次)
