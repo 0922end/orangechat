@@ -596,8 +596,16 @@ class VoiceCallService : Service(), KoinComponent {
         for (char in text) {
             current.append(char)
             if (char == '。' || char == '？' || char == '！' || char == '.' ||
-                char == '?' || char == '!' || char == '\n'
+                char == '?' || char == '!' || char == '\n' ||
+                char == '，' || char == ',' || char == '、' || char == ' '
             ) {
+                val sentence = current.toString().trim()
+                if (sentence.isNotEmpty()) {
+                    result.add(sentence)
+                }
+                current.clear()
+            } else if (current.length >= 20) {
+                // 超过20字没标点也先发
                 val sentence = current.toString().trim()
                 if (sentence.isNotEmpty()) {
                     result.add(sentence)
