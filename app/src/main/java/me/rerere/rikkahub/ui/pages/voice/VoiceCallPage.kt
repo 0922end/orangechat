@@ -166,12 +166,7 @@ fun VoiceCallPage(
         }
     }
 
-    // CAMERA权限授予后自动开视频
-    LaunchedEffect(cameraPermission.allRequiredPermissionsGranted) {
-        if (cameraPermission.allRequiredPermissionsGranted && boundService != null && !uiState.isVideoEnabled) {
-            // 只在用户刚授权时自动开（不是每次进页面都开）
-        }
-    }
+
 
     // boundService 为 null (绑定还没完成) 时, 显示默认空状态
     val uiState by (boundService?.uiState
