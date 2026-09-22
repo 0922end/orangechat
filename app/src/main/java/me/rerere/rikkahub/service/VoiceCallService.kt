@@ -622,7 +622,7 @@ class VoiceCallService : Service(), KoinComponent {
      */
     private fun getPendingRemainder(text: String): String {
         val lastSentenceEnd =
-            text.lastIndexOfAny(charArrayOf('。', '？', '！', '.', '?', '!', '\n'))
+            text.lastIndexOfAny(charArrayOf('。', '？', '！', '.', '?', '!', '\n', '，', ',', '、', ' '))
         return if (lastSentenceEnd >= 0 && lastSentenceEnd < text.length - 1) {
             text.substring(lastSentenceEnd + 1)
         } else if (lastSentenceEnd < 0) {
