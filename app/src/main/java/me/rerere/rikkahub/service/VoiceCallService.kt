@@ -596,8 +596,7 @@ class VoiceCallService : Service(), KoinComponent {
         for (char in text) {
             current.append(char)
             if (char == '。' || char == '？' || char == '！' || char == '.' ||
-                char == '?' || char == '!' || char == '\n' ||
-                char == '，' || char == ',' || char == '、' || char == ' '
+                char == '?' || char == '!' || char == '\n'
             ) {
                 val sentence = current.toString().trim()
                 if (sentence.isNotEmpty()) {
