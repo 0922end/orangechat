@@ -243,6 +243,31 @@ fun VoiceCallPage(
                 }
             }
 
+            // 摄像头预览小窗 (视频开启时显示)
+            if (uiState.isVideoEnabled && boundService != null) {
+                Box(
+                    modifier = Modifier
+                        .padding(horizontal = 24.dp)
+                        .size(width = 120.dp, height = 160.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .border(2.dp, accentColor.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
+                        .align(Alignment.End)
+                ) {
+                    AndroidView(
+                        factory = { ctx ->
+                            PreviewView(ctx).apply {
+                                implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                                scaleType = PreviewView.ScaleType.FILL_CENTER
+                                boundService?.previewSurfaceProvider = this.surfaceProvider
+                            }
+                        },
+                        update = { previewView ->
+                            boundService?.previewSurfaceProvider = previewView.surfaceProvider
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+
             // 字幕区: 按状态切换显示谁的字幕
             // - 聆听/思考: 显示用户刚说的话 (思考时保留, 让用户确认 AI 听到了什么)
             // - 传达/就绪: 显示 AI 的话 (传达时逐句增长, 说完后仍保留在屏上,
