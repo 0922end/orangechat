@@ -117,7 +117,7 @@ fun VoiceCallPage(conversationId: Uuid, onBack: () -> Unit) {
 @Composable private fun Btn(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit, bg: Color, tint: Color, enabled: Boolean, size: Dp = 52.dp) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Surface(onClick = onClick, shape = CircleShape, color = if (enabled) bg else bg.copy(alpha = 0.2f), modifier = Modifier.size(size), enabled = enabled) {
-            Box(Alignment.Center, Modifier.fillMaxSize()) { Icon(icon, label, tint = if (enabled) tint else tint.copy(alpha = 0.3f), modifier = Modifier.size(size * 0.4f)) }
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(icon, label, tint = if (enabled) tint else tint.copy(alpha = 0.3f), modifier = Modifier.size(size * 0.4f)) }
         }
         Spacer(Modifier.height(6.dp))
         Text(label, color = if (enabled) Color.White.copy(alpha = 0.7f) else Color.White.copy(alpha = 0.3f), fontSize = 11.sp)
