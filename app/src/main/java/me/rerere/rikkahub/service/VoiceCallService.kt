@@ -340,50 +340,60 @@ class VoiceCallService : Service(), KoinComponent {
             var lastTranscript = ""
             var silenceStartTime: Long = 0L
             var lastAmplitudeTime: Long = System.currentTimeMillis()
+            var hadVoiceActivity = false
+            var voiceSilenceStart: Long = 0L
             val silenceThresholdMs = 500L
             val minTranscriptLength = 2
             val amplitudeTimeoutMs = 2000L
+            val voiceSilenceThresholdMs = 800L
 
             while (true) {
                 delay(100)
                 if (_uiState.value.status != VoiceCallStatus.Listening) break
-                if (isMuted) continue // 静音期间不检测, 也不发送
+                if (isMuted) continue
                 if (!_uiState.value.autoSendEnabled) continue
 
                 val currentTranscript = _uiState.value.userTranscript
                 val amplitudes = _uiState.value.amplitudes
                 val recentAmplitude = amplitudes.takeLast(3).average().toFloat()
 
-                // 检测音量活动 - 如果有声音就重置计时
                 if (recentAmplitude > 0.05f) {
                     lastAmplitudeTime = System.currentTimeMillis()
+                    hadVoiceActivity = true
+                    voiceSilenceStart = 0L
                 }
 
                 if (currentTranscript != lastTranscript) {
-                    // 转写还在变化, 重置静音计时
                     lastTranscript = currentTranscript
                     silenceStartTime = 0L
                 } else if (currentTranscript.length >= minTranscriptLength) {
-                    // 转写稳定且有内容, 开始/继续计时
-                    if (silenceStartTime == 0L) {
-                        silenceStartTime = System.currentTimeMillis()
-                    }
+                    if (silenceStartTime == 0L) silenceStartTime = System.currentTimeMillis()
                     val silentFor = System.currentTimeMillis() - silenceStartTime
                     val amplitudeSilentFor = System.currentTimeMillis() - lastAmplitudeTime
-
-                    // 触发条件: 转写稳定且静音足够, 或音量持续低迷
                     if (silentFor >= silenceThresholdMs || amplitudeSilentFor >= amplitudeTimeoutMs) {
-                        Log.d(
-                            TAG,
-                            "VAD triggered auto-send: $currentTranscript (silentFor=$silentFor, ampSilent=$amplitudeSilentFor)"
-                        )
+                        Log.d(TAG, "VAD auto-send: $currentTranscript")
                         sendCurrentMessage()
                         break
                     }
                 }
+
+                if (currentTranscript.isEmpty() && hadVoiceActivity && recentAmplitude <= 0.05f) {
+                    if (voiceSilenceStart == 0L) voiceSilenceStart = System.currentTimeMillis()
+                    val voiceSilent = System.currentTimeMillis() - voiceSilenceStart
+                    if (voiceSilent >= voiceSilenceThresholdMs) {
+                        Log.d(TAG, "VAD flush non-streaming ASR")
+                        hadVoiceActivity = false
+                        voiceSilenceStart = 0L
+                        try { asr.stop() } catch (_: Exception) {}
+                        break
+                    }
+                } else if (recentAmplitude > 0.05f) {
+                    voiceSilenceStart = 0L
+                }
             }
         }
     }
+
 
     /**
      * 发送当前转写的消息.
