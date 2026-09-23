@@ -44,27 +44,8 @@ import me.rerere.rikkahub.ui.hooks.createCustomTtsState
 import me.rerere.rikkahub.ui.pages.voice.VoiceCallStatus
 import me.rerere.rikkahub.ui.pages.voice.VoiceCallUiState
 import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.Response
-import okhttp3.WebSocket
-import okhttp3.WebSocketListener
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.ImageFormat
-import android.graphics.Rect
-import android.graphics.YuvImage
-import android.util.Base64
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.ImageProxy
-import androidx.camera.core.Preview
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.LifecycleRegistry
-import androidx.lifecycle.Lifecycle
-import java.io.ByteArrayOutputStream
 import kotlin.uuid.Uuid
 
 private const val TAG = "VoiceCallService"
@@ -105,7 +86,6 @@ class VoiceCallService : Service(), KoinComponent {
     private var speakingMonitorJob: Job? = null
     private var conversationMonitorJob: Job? = null
     private var asrMonitorJob: Job? = null
-    private var interruptDetectJob: Job? = null
     private var lastSpokenText: String = ""
 
     // 跟踪 AI 消息的增量, 用于流式 TTS
@@ -118,23 +98,6 @@ class VoiceCallService : Service(), KoinComponent {
     // 静音状态 (独立于 _uiState.isMuted, 检测循环里直接读这个字段更快)
     private var isMuted: Boolean = false
 
-    // ==================== 视频通话相关 ====================
-    private var videoWebSocket: WebSocket? = null
-    private var cameraProvider: ProcessCameraProvider? = null
-    private var frameJob: Job? = null
-    private var isVideoEnabled: Boolean = false
-    private var isFrontCamera: Boolean = true
-    private var cameraPreview: Preview? = null
-    var previewSurfaceProvider: Preview.SurfaceProvider? = null
-        set(value) {
-            field = value
-            cameraPreview?.setSurfaceProvider(value)
-        }
-    private var serviceLifecycleOwner: ServiceLifecycleOwner? = null
-
-    // pai-voice 服务器地址 (暂时硬编码, 以后移到设置页)
-    private val paiVoiceWsUrl: String = "ws://45.152.65.173:8780"
-    private val paiVoiceToken: String = "elian2026"
 
     companion object {
         private val _activeConversationId = MutableStateFlow<String?>(null)
@@ -226,7 +189,7 @@ class VoiceCallService : Service(), KoinComponent {
                 this,
                 NOTIFICATION_ID,
                 buildNotification(_uiState.value),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
             )
         } catch (e: Exception) {
             Log.e(TAG, "startForeground 失败, conversationId=$conversationId", e)
@@ -350,8 +313,6 @@ class VoiceCallService : Service(), KoinComponent {
             )
         }
 
-        // 停止"打断检测"协程 (Speaking 状态才需要它)
-        interruptDetectJob?.cancel()
 
         // 重启 ASR: 非流式 ASR (SiliconFlow) 是“录一段→停”的一次性模式,
         // AI 说完话回到 Listening 时它已停, 不重启则音波球不动、说话发不出去.
@@ -379,7 +340,7 @@ class VoiceCallService : Service(), KoinComponent {
             var lastTranscript = ""
             var silenceStartTime: Long = 0L
             var lastAmplitudeTime: Long = System.currentTimeMillis()
-            val silenceThresholdMs = 800L
+            val silenceThresholdMs = 500L
             val minTranscriptLength = 2
             val amplitudeTimeoutMs = 2000L
 
@@ -447,6 +408,9 @@ class VoiceCallService : Service(), KoinComponent {
         ttsSentLength = 0
         lastAssistantText = ""
 
+        // 进入处理状态时暂停ASR，防止TTS���声被录入
+        try { asr.stop() } catch (_: Exception) {}
+
         try {
             chatService.sendMessage(
                 conversationId,
@@ -507,8 +471,7 @@ class VoiceCallService : Service(), KoinComponent {
                 // 这样用户随时可以打断, UI 反馈更即时
                 if (_uiState.value.status == VoiceCallStatus.Processing && currentText.isNotBlank()) {
                     _uiState.update { it.copy(status = VoiceCallStatus.Speaking) }
-                    startInterruptDetection()
-                }
+                            }
 
                 lastAssistantText = currentText
             }
@@ -536,7 +499,6 @@ class VoiceCallService : Service(), KoinComponent {
         }
 
         _uiState.update { it.copy(status = VoiceCallStatus.Speaking) }
-        startInterruptDetection()
         waitForTtsToFinish()
 
         // 回到监听
@@ -624,56 +586,6 @@ class VoiceCallService : Service(), KoinComponent {
         }
     }
 
-    /**
-     * Speaking 状态下的打断检测.
-     *
-     * 与 startVadDetection (判断"该发送了") 职责不同:
-     * 这里只关心"用户是否开始说话了", 一旦检测到就立即打断, 不等静音判断.
-     *
-     * 用比 Listening 状态更高的音量阈值 (0.15f vs 0.05f), 降低被 AI 自己声音误触发的概率.
-     * 残留风险: AEC 不是 100% 完美, 外放音量很大或低端机型硬件 AEC 差时仍可能误触发,
-     * 后续可加音量差阈值调优, 但不阻塞现在的实现.
-     */
-    private fun startInterruptDetection() {
-        interruptDetectJob?.cancel()
-        interruptDetectJob = serviceScope.launch {
-            var baselineTranscript = _uiState.value.userTranscript
-            while (true) {
-                delay(150)
-                if (_uiState.value.status != VoiceCallStatus.Speaking) break
-                if (isMuted) continue // 静音期间不判断打断
-
-                val currentTranscript = _uiState.value.userTranscript
-                val amplitudes = _uiState.value.amplitudes
-                val recentAmplitude = amplitudes.takeLast(3).average().toFloat()
-
-                // 转写文本相较于进入 Speaking 时有新增内容, 或者音量突然超过阈值,
-                // 都视为"用户开始说话了"
-                val hasNewTranscript = currentTranscript.length > baselineTranscript.length + 1
-                val hasLoudVoice = recentAmplitude > 0.15f
-
-                if (hasNewTranscript || hasLoudVoice) {
-                    Log.d(
-                        TAG,
-                        "检测到用户打断: transcript=$currentTranscript, amplitude=$recentAmplitude"
-                    )
-                    interruptSpeaking()
-                    break
-                }
-            }
-        }
-    }
-
-    /**
-     * 用户打断 AI 说话 (Barge-in).
-     * 不再调用 asr.start() (ASR 一直是开着的), 只做状态切换 + cancel 协程.
-     */
-    fun interruptSpeaking() {
-        if (_uiState.value.status != VoiceCallStatus.Speaking) return
-        speakingMonitorJob?.cancel()
-        interruptDetectJob?.cancel()
-        startListening()
-    }
 
     /**
      * 监听 ASR 状态 (用于非流式 ASR 如 SiliconFlow).
@@ -740,210 +652,6 @@ class VoiceCallService : Service(), KoinComponent {
     fun toggleAutoSend() {
         _uiState.update { it.copy(autoSendEnabled = !it.autoSendEnabled) }
     }
-
-    // ==================== 视频通话方法 ====================
-
-    /**
-     * Service 级 LifecycleOwner, 供 CameraX bindToLifecycle 用.
-     */
-    class ServiceLifecycleOwner : LifecycleOwner {
-        private val registry = LifecycleRegistry(this)
-        override val lifecycle: Lifecycle get() = registry
-        fun start() {
-            registry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
-            registry.handleLifecycleEvent(Lifecycle.Event.ON_START)
-            registry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
-        }
-        fun stop() {
-            registry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
-            registry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
-            registry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
-        }
-    }
-
-    /**
-     * 开关视频. 从 VoiceCallPage 的按钮调用.
-     */
-    fun toggleVideo() {
-        isVideoEnabled = !isVideoEnabled
-        _uiState.update { it.copy(isVideoEnabled = isVideoEnabled) }
-        if (isVideoEnabled) {
-            connectVideoWebSocket()
-            startCameraCapture()
-        } else {
-            stopCamera()
-            videoWebSocket?.close(1000, "video off")
-            videoWebSocket = null
-        }
-    }
-
-    /**
-     * 翻转前后摄像头.
-     */
-    fun flipCamera() {
-        isFrontCamera = !isFrontCamera
-        _uiState.update { it.copy(isFrontCamera = isFrontCamera) }
-        if (isVideoEnabled) {
-            stopCamera()
-            startCameraCapture()
-        }
-    }
-
-    /**
-     * 连接 pai-voice WebSocket 服务端.
-     */
-    private fun connectVideoWebSocket() {
-        videoWebSocket?.close(1000, "reconnect")
-        val url = "$paiVoiceWsUrl?token=$paiVoiceToken"
-        val request = Request.Builder().url(url).build()
-        videoWebSocket = httpClient.newWebSocket(request, object : WebSocketListener() {
-            override fun onOpen(ws: WebSocket, response: Response) {
-                Log.d(TAG, "Video WebSocket connected")
-                val startMsg = org.json.JSONObject().apply {
-                    put("type", "start")
-                    put("video", true)
-                    put("token", paiVoiceToken)
-                }.toString()
-                ws.send(startMsg)
-                // 告诉服务端开启视频
-                val videoMsg = org.json.JSONObject().apply {
-                    put("type", "video")
-                    put("on", true)
-                }.toString()
-                ws.send(videoMsg)
-            }
-
-            override fun onMessage(ws: WebSocket, text: String) {
-                try {
-                    val json = org.json.JSONObject(text)
-                    when (json.optString("type")) {
-                        "observation" -> {
-                            val content = json.optString("content", "")
-                            if (content.isNotBlank()) {
-                                _uiState.update { it.copy(lastObservation = content) }
-                                Log.d(TAG, "Vision observation: $content")
-                            }
-                        }
-                        "error" -> {
-                            Log.e(TAG, "Video WS error: ${json.optString("error")}")
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Video WS message parse error", e)
-                }
-            }
-
-            override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
-                Log.e(TAG, "Video WebSocket failed", t)
-            }
-
-            override fun onClosed(ws: WebSocket, code: Int, reason: String) {
-                Log.d(TAG, "Video WebSocket closed: $code $reason")
-            }
-        })
-    }
-
-    /**
-     * 启动 CameraX 采集, 每 5 秒抽一帧 JPEG 发给 pai-voice.
-     */
-    private fun startCameraCapture() {
-        serviceScope.launch(Dispatchers.Main) {
-            try {
-                val cameraProviderFuture = ProcessCameraProvider.getInstance(applicationContext)
-                val provider = cameraProviderFuture.get()
-                cameraProvider = provider
-
-                val cameraSelector = if (isFrontCamera) {
-                    CameraSelector.DEFAULT_FRONT_CAMERA
-                } else {
-                    CameraSelector.DEFAULT_BACK_CAMERA
-                }
-
-                val imageAnalysis = ImageAnalysis.Builder()
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .build()
-
-                imageAnalysis.setAnalyzer(java.util.concurrent.Executors.newSingleThreadExecutor()) { imageProxy ->
-                    sendFrameToServer(imageProxy)
-                    imageProxy.close()
-                }
-
-                // Preview use case for UI display
-                val preview = Preview.Builder().build()
-                preview.setSurfaceProvider(previewSurfaceProvider)
-                cameraPreview = preview
-
-                provider.unbindAll()
-                val lifecycleOwner = ServiceLifecycleOwner()
-                serviceLifecycleOwner = lifecycleOwner
-                lifecycleOwner.start()
-                provider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, imageAnalysis)
-
-                // 启动帧节流: 每5秒发一帧
-                frameJob?.cancel()
-                frameJob = serviceScope.launch {
-                    while (isVideoEnabled) {
-                        delay(5000)
-                    }
-                }
-
-                Log.d(TAG, "Camera capture started, front=$isFrontCamera")
-            } catch (e: Exception) {
-                Log.e(TAG, "Camera start failed", e)
-                _uiState.update { it.copy(errorMessage = "摄像头启动失败: ${e.message}") }
-            }
-        }
-    }
-
-    /**
-     * 将 ImageProxy 转为 JPEG 并通过 WebSocket 发送.
-     */
-    @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
-    private fun sendFrameToServer(imageProxy: ImageProxy) {
-        val ws = videoWebSocket ?: return
-        try {
-            val image = imageProxy.image ?: return
-            val yBuffer = image.planes[0].buffer
-            val uBuffer = image.planes[1].buffer
-            val vBuffer = image.planes[2].buffer
-            val ySize = yBuffer.remaining()
-            val uSize = uBuffer.remaining()
-            val vSize = vBuffer.remaining()
-            val nv21 = ByteArray(ySize + uSize + vSize)
-            yBuffer.get(nv21, 0, ySize)
-            vBuffer.get(nv21, ySize, vSize)
-            uBuffer.get(nv21, ySize + vSize, uSize)
-
-            val yuvImage = YuvImage(nv21, ImageFormat.NV21, imageProxy.width, imageProxy.height, null)
-            val out = ByteArrayOutputStream()
-            yuvImage.compressToJpeg(Rect(0, 0, imageProxy.width, imageProxy.height), 60, out)
-            val jpegBytes = out.toByteArray()
-            val b64 = Base64.encodeToString(jpegBytes, Base64.NO_WRAP)
-
-            val frameMsg = org.json.JSONObject().apply {
-                put("type", "frame")
-                put("data", b64)
-                put("ts", System.currentTimeMillis())
-            }.toString()
-            ws.send(frameMsg)
-        } catch (e: Exception) {
-            Log.e(TAG, "sendFrame error", e)
-        }
-    }
-
-    /**
-     * 停止摄像头采集.
-     */
-    private fun stopCamera() {
-        frameJob?.cancel()
-        cameraProvider?.unbindAll()
-        serviceLifecycleOwner?.stop()
-        serviceLifecycleOwner = null
-        cameraProvider = null
-        cameraPreview = null
-        Log.d(TAG, "Camera stopped")
-    }
-
     /**
      * 挂断 / 结束通话.
      * 额外复位 _activeConversationId 和移除前台通知.
@@ -953,14 +661,8 @@ class VoiceCallService : Service(), KoinComponent {
         speakingMonitorJob?.cancel()
         conversationMonitorJob?.cancel()
         asrMonitorJob?.cancel()
-        interruptDetectJob?.cancel()
         asr.stop()
         tts.stop()
-        // 清理视频通话
-        stopCamera()
-        videoWebSocket?.close(1000, "call ended")
-        videoWebSocket = null
-        isVideoEnabled = false
         _uiState.update {
             it.copy(status = VoiceCallStatus.Idle)
         }
@@ -1033,3 +735,4 @@ class VoiceCallService : Service(), KoinComponent {
         serviceScope.cancel()
     }
 }
+
