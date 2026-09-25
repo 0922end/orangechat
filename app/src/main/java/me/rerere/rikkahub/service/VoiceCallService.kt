@@ -332,7 +332,7 @@ class VoiceCallService : Service(), KoinComponent {
                         restartAsr()
                         continue
                     }
-                } else if (recentAmplitude > 0.05f) {
+                } else if (recentAmplitude > voiceThreshold) {
                     voiceSilenceStart = 0L
                 }
             }
