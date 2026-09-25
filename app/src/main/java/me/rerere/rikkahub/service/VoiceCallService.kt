@@ -300,7 +300,7 @@ class VoiceCallService : Service(), KoinComponent {
                 // pai-voice 的 speakingGain = 3.3 倍
                 val isSpeakingOrProcessing = currentStatus == VoiceCallStatus.Speaking ||
                     currentStatus == VoiceCallStatus.Processing
-                val voiceThreshold = if (isSpeakingOrProcessing) 0.15f else 0.05f
+                val voiceThreshold = if (isSpeakingOrProcessing) 0.08f else 0.05f
 
                 // 检测到声音活动
                 if (recentAmplitude > voiceThreshold) {
