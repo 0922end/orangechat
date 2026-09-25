@@ -355,7 +355,7 @@ class VoiceCallService : Service(), KoinComponent {
         generation++
         addDialogueLine(DialogueLine("user", text))
 
-        try { asr.stop() } catch (_: Exception) {}
+        // Mode B: ASR保持运行，不stop，用户说的新话进排队
 
         _uiState.update {
             it.copy(
