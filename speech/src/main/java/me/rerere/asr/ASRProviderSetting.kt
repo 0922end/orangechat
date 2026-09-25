@@ -30,7 +30,7 @@ sealed class ASRProviderSetting {
         val model: String = "gpt-4o-transcribe",
         val language: String = "",
         val prompt: String = "",
-        val sampleRate: Int = 24000,
+        val sampleRate: Int = 16000,
         val vadThreshold: Float = 0.3f,
         val prefixPaddingMs: Int = 200,
         val silenceDurationMs: Int = 300,
