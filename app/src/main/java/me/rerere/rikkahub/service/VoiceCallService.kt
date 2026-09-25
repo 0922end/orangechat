@@ -296,8 +296,14 @@ class VoiceCallService : Service(), KoinComponent {
                 val amplitudes = _uiState.value.amplitudes
                 val recentAmplitude = amplitudes.takeLast(3).average().toFloat()
 
+                // Speaking/Processing 状态下提高门槛过滤 TTS 回声
+                // pai-voice 的 speakingGain = 3.3 倍
+                val isSpeakingOrProcessing = currentStatus == VoiceCallStatus.Speaking ||
+                    currentStatus == VoiceCallStatus.Processing
+                val voiceThreshold = if (isSpeakingOrProcessing) 0.15f else 0.05f
+
                 // 检测到声音活动
-                if (recentAmplitude > 0.05f) {
+                if (recentAmplitude > voiceThreshold) {
                     lastAmplitudeTime = System.currentTimeMillis()
                     hadVoiceActivity = true
                     voiceSilenceStart = 0L
