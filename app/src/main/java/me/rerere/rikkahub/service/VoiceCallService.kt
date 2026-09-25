@@ -272,8 +272,14 @@ class VoiceCallService : Service(), KoinComponent {
 
             while (true) {
                 delay(100)
-                if (_uiState.value.status != VoiceCallStatus.Listening) break
                 if (isMuted) continue
+
+                val currentStatus = _uiState.value.status
+                // 只在 Listening / Speaking / Processing 状态下检测
+                // Speaking/Processing 时捕获的话进排队队列
+                if (currentStatus != VoiceCallStatus.Listening &&
+                    currentStatus != VoiceCallStatus.Speaking &&
+                    currentStatus != VoiceCallStatus.Processing) continue
 
                 val currentTranscript = _uiState.value.userTranscript
                 val amplitudes = _uiState.value.amplitudes
@@ -294,7 +300,11 @@ class VoiceCallService : Service(), KoinComponent {
                     val ampSilentFor = System.currentTimeMillis() - lastAmplitudeTime
                     if (silentFor >= silenceThresholdMs || ampSilentFor >= amplitudeTimeoutMs) {
                         onUserSpeechEnd(currentTranscript)
-                        break
+                        // 重置VAD状态继续检测，不break
+                        lastTranscript = ""
+                        silenceStartTime = 0L
+                        hadVoiceActivity = false
+                        continue
                     }
                 }
 
@@ -303,8 +313,12 @@ class VoiceCallService : Service(), KoinComponent {
                     if (System.currentTimeMillis() - voiceSilenceStart >= voiceSilenceThresholdMs) {
                         hadVoiceActivity = false
                         voiceSilenceStart = 0L
+                        // 非流式ASR: stop触发转写，但不退出VAD循环
                         try { asr.stop() } catch (_: Exception) {}
-                        break
+                        // 重启ASR继续监听
+                        delay(200)
+                        restartAsr()
+                        continue
                     }
                 } else if (recentAmplitude > 0.05f) {
                     voiceSilenceStart = 0L
