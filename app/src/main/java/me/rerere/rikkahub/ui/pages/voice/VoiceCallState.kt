@@ -1,17 +1,10 @@
-/*
- * 橘瓣 OrangeChat
- * 衍生自 RikkaHub (https://github.com/rikkahub/rikkahub)，原作者 RE
- * 本项目基于 GNU AGPL v3 开源，详见根目录 LICENSE 文件
- */
-
 package me.rerere.rikkahub.ui.pages.voice
 
 /**
- * 语音通话状态机
+ * Elian 语音通话状态机 (pai-voice turn管理)
  *
- * 状态流转:
  * Idle -> Listening -> Processing -> Speaking -> Listening -> ...
- *                                    |-> Error -> Idle
+ *                         ↑ (queue)      ↓ (checkQueue)
  */
 enum class VoiceCallStatus {
     Idle,
@@ -21,9 +14,13 @@ enum class VoiceCallStatus {
     Error
 }
 
-/**
- * 语音通话 UI 状态
- */
+data class DialogueLine(
+    val speaker: String,
+    val text: String,
+    val isMonologue: Boolean = false,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
 data class VoiceCallUiState(
     val status: VoiceCallStatus = VoiceCallStatus.Idle,
     val userTranscript: String = "",
@@ -31,8 +28,15 @@ data class VoiceCallUiState(
     val errorMessage: String? = null,
     val amplitudes: List<Float> = emptyList(),
     val isMuted: Boolean = false,
-    val autoSendEnabled: Boolean = true,
+    val isSpeakerOn: Boolean = true,
+    val callDurationSeconds: Int = 0,
+    val dialogue: List<DialogueLine> = emptyList(),
+    val queuedMessages: Int = 0,
 ) {
     val isActive: Boolean
         get() = status != VoiceCallStatus.Idle
+    val isConnected: Boolean
+        get() = status == VoiceCallStatus.Listening ||
+                status == VoiceCallStatus.Processing ||
+                status == VoiceCallStatus.Speaking
 }
