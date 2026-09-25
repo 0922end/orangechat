@@ -592,6 +592,18 @@ class VoiceCallService : Service(), KoinComponent {
     }
 
     fun endCall() {
+        // 通话结束: 发带时长的系统消息
+        val duration = _uiState.value.callDurationSeconds
+        val mins = duration / 60
+        val secs = duration % 60
+        val durationStr = if (mins > 0) "${mins}分${secs}秒" else "${secs}秒"
+        try {
+            chatService.sendMessage(
+                conversationId,
+                listOf(UIMessagePart.Text("[语音通话已结束，通话时长${durationStr}]"))
+            )
+        } catch (_: Exception) {}
+
         vadJob?.cancel()
         conversationMonitorJob?.cancel()
         speakingMonitorJob?.cancel()
