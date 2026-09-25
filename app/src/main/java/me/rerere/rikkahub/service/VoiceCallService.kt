@@ -265,66 +265,64 @@ class VoiceCallService : Service(), KoinComponent {
 
     // ==================== VAD 检测 ====================
 
+    /**
+     * VAD 持续运行在所有通话状态下:
+     * - Listening: 检测到话→直接 processNextTurn
+     * - Speaking/Processing: 检测到话→塞进 pendingQueue 排队
+     *
+     * 非流式 ASR (MiMo/SiliconFlow) 必须 stop() 才会 POST 转写返回文字,
+     * 所以检测到音量活动后要 stop→拿 transcript→restart 循环.
+     */
     private fun startVadDetection() {
         vadJob?.cancel()
         vadJob = serviceScope.launch {
-            var lastTranscript = ""
-            var silenceStartTime = 0L
             var lastAmplitudeTime = System.currentTimeMillis()
             var hadVoiceActivity = false
             var voiceSilenceStart = 0L
-            val silenceThresholdMs = 500L
-            val minTranscriptLength = 2
-            val amplitudeTimeoutMs = 2000L
             val voiceSilenceThresholdMs = 800L
+
+            // 确保 ASR 在跑
+            restartAsr()
 
             while (true) {
                 delay(100)
                 if (isMuted) continue
 
                 val currentStatus = _uiState.value.status
-                // 只在 Listening / Speaking / Processing 状态下检测
-                // Speaking/Processing 时捕获的话进排队队列
                 if (currentStatus != VoiceCallStatus.Listening &&
                     currentStatus != VoiceCallStatus.Speaking &&
                     currentStatus != VoiceCallStatus.Processing) continue
 
-                val currentTranscript = _uiState.value.userTranscript
                 val amplitudes = _uiState.value.amplitudes
                 val recentAmplitude = amplitudes.takeLast(3).average().toFloat()
 
+                // 检测到声音活动
                 if (recentAmplitude > 0.05f) {
                     lastAmplitudeTime = System.currentTimeMillis()
                     hadVoiceActivity = true
                     voiceSilenceStart = 0L
                 }
 
-                if (currentTranscript != lastTranscript) {
-                    lastTranscript = currentTranscript
-                    silenceStartTime = 0L
-                } else if (currentTranscript.length >= minTranscriptLength) {
-                    if (silenceStartTime == 0L) silenceStartTime = System.currentTimeMillis()
-                    val silentFor = System.currentTimeMillis() - silenceStartTime
-                    val ampSilentFor = System.currentTimeMillis() - lastAmplitudeTime
-                    if (silentFor >= silenceThresholdMs || ampSilentFor >= amplitudeTimeoutMs) {
-                        onUserSpeechEnd(currentTranscript)
-                        // 重置VAD状态继续检测，不break
-                        lastTranscript = ""
-                        silenceStartTime = 0L
-                        hadVoiceActivity = false
-                        continue
-                    }
-                }
-
-                if (currentTranscript.isEmpty() && hadVoiceActivity && recentAmplitude <= 0.05f) {
+                // 有过声音活动 + 现在安静了 → stop ASR 触发转写
+                if (hadVoiceActivity && recentAmplitude <= 0.05f) {
                     if (voiceSilenceStart == 0L) voiceSilenceStart = System.currentTimeMillis()
                     if (System.currentTimeMillis() - voiceSilenceStart >= voiceSilenceThresholdMs) {
                         hadVoiceActivity = false
                         voiceSilenceStart = 0L
-                        // 非流式ASR: stop触发转写，但不退出VAD循环
+
+                        // stop ASR → 触发非流式转写
                         try { asr.stop() } catch (_: Exception) {}
-                        // 重启ASR继续监听
-                        delay(200)
+                        delay(300) // 等 ASR 返回转写结果
+
+                        // 读取转写结果
+                        val transcript = _uiState.value.userTranscript.trim()
+                        if (transcript.isNotBlank()) {
+                            onUserSpeechEnd(transcript)
+                        }
+
+                        // 清空转写 + 重启 ASR 继续监听
+                        _uiState.update { it.copy(userTranscript = "") }
+                        delay(100)
                         restartAsr()
                         continue
                     }
