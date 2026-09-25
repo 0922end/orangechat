@@ -226,6 +226,14 @@ class VoiceCallService : Service(), KoinComponent {
             )
         }
 
+        // 通话接通: 发系统消息让AI知道正在通话
+        try {
+            chatService.sendMessage(
+                conversationId,
+                listOf(UIMessagePart.Text("[语音通话已接通]"))
+            )
+        } catch (_: Exception) {}
+
         try {
             asr.start { transcript -> _uiState.update { it.copy(userTranscript = transcript) } }
         } catch (e: Exception) {
