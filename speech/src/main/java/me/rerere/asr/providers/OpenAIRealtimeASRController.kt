@@ -109,6 +109,7 @@ class OpenAIRealtimeASRController(
         val request = Request.Builder()
             .url(provider.websocketEndpoint())
             .addHeader("Authorization", "Bearer ${provider.apiKey}")
+            .addHeader("OpenAI-Beta", "realtime=v1")
             .build()
 
         webSocket = httpClient.newWebSocket(request, object : WebSocketListener() {
