@@ -447,6 +447,8 @@ class VoiceCallService : Service(), KoinComponent {
         if (displayText.isNotBlank()) {
             addDialogueLine(DialogueLine("assistant", displayText, isMonologue = mono))
         }
+        // 清空实时显示，防止跟dialogueLines重复
+        _uiState.update { it.copy(assistantText = "") }
 
         if (!mono) {
             if (finalText.length > ttsSentLength) {
