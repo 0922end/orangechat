@@ -310,7 +310,7 @@ class VoiceCallService : Service(), KoinComponent {
                 }
 
                 // 有过声音活动 + 现在安静了 → stop ASR 触发转写
-                if (hadVoiceActivity && recentAmplitude <= 0.05f) {
+                if (hadVoiceActivity && recentAmplitude <= voiceThreshold) {
                     if (voiceSilenceStart == 0L) voiceSilenceStart = System.currentTimeMillis()
                     if (System.currentTimeMillis() - voiceSilenceStart >= voiceSilenceThresholdMs) {
                         hadVoiceActivity = false
