@@ -36,6 +36,7 @@ import me.rerere.rikkahub.ui.hooks.CustomTtsState
 import me.rerere.rikkahub.ui.hooks.createCustomAsrState
 import me.rerere.rikkahub.ui.hooks.createCustomTtsState
 import me.rerere.rikkahub.ui.pages.voice.DialogueLine
+import me.rerere.rikkahub.ui.pages.voice.VideoMode
 import me.rerere.rikkahub.ui.pages.voice.VoiceCallStatus
 import me.rerere.rikkahub.ui.pages.voice.VoiceCallUiState
 import okhttp3.OkHttpClient
