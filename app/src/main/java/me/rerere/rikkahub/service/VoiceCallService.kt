@@ -597,6 +597,40 @@ class VoiceCallService : Service(), KoinComponent {
         }
     }
 
+    /**
+     * 切换摄像头开关
+     * Off -> Live -> Off 循环
+     */
+    fun toggleVideo() {
+        val current = _uiState.value.videoMode
+        val next = if (current == VideoMode.Off) VideoMode.Live else VideoMode.Off
+        _uiState.update { it.copy(videoMode = next) }
+        if (next == VideoMode.Off) {
+            addDialogueLine(DialogueLine("system", "摄像头已关闭"))
+        } else {
+            addDialogueLine(DialogueLine("system", "摄像头已开启 · 实时模式"))
+        }
+    }
+
+    /**
+     * 切换视频模式: Live <-> Companion
+     */
+    fun toggleVideoMode() {
+        val current = _uiState.value.videoMode
+        if (current == VideoMode.Off) return
+        val next = if (current == VideoMode.Live) VideoMode.Companion else VideoMode.Live
+        _uiState.update { it.copy(videoMode = next) }
+        val modeStr = if (next == VideoMode.Companion) "陪伴模式" else "实时模式"
+        addDialogueLine(DialogueLine("system", "已切换到$modeStr"))
+    }
+
+    /**
+     * 翻转前后摄像头
+     */
+    fun flipCamera() {
+        _uiState.update { it.copy(isFrontCamera = !it.isFrontCamera) }
+    }
+
     fun endCall() {
         // 通话结束: 发带时长的系统消息
         val duration = _uiState.value.callDurationSeconds
