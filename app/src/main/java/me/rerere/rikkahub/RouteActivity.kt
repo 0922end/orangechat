@@ -433,6 +433,18 @@ class RouteActivity : ComponentActivity() {
                             }
                         }
                 ) {
+                    // 悬浮通话条：通话中且不在通话页面时显示
+                    VoiceCallOverlayBar(
+                        isOnCallPage = backStack.lastOrNull() is Screen.VoiceCall,
+                        onClick = {
+                            VoiceCallService.activeConversationId.value?.let { convId ->
+                                val alreadyOnCall = backStack.lastOrNull() is Screen.VoiceCall
+                                if (!alreadyOnCall) {
+                                    backStack.add(Screen.VoiceCall(convId))
+                                }
+                            }
+                        }
+                    )
                     NavDisplay(
                         backStack = backStack,
                         entryDecorators = listOf(
