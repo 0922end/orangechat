@@ -726,6 +726,7 @@ class VoiceCallService : Service(), KoinComponent {
         val secs = state.callDurationSeconds % 60
         val timer = String.format("%02d:%02d", mins, secs)
         val statusStr = when (state.status) {
+            VoiceCallStatus.Calling -> "正在呼叫"
             VoiceCallStatus.Listening -> "正在聆听"
             VoiceCallStatus.Processing -> "思考中"
             VoiceCallStatus.Speaking -> "说话中"
