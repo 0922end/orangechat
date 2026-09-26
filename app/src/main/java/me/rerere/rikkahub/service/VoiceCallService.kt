@@ -120,6 +120,19 @@ class VoiceCallService : Service(), KoinComponent {
             }
         }
 
+        /**
+         * AI 主动挂断: 设置标记后停止服务
+         * 用户会看到 "对方已挂断" 而不是普通的通话结束
+         */
+        @Volatile
+        var pendingAiHangUp = false
+            private set
+
+        fun aiHangUp(context: Context) {
+            pendingAiHangUp = true
+            stop(context)
+        }
+
         const val EXTRA_CONVERSATION_ID = "conversationId"
         const val ACTION_HANG_UP = "me.rerere.rikkahub.VOICE_CALL_HANG_UP"
         const val NOTIFICATION_ID = 40001
