@@ -49,7 +49,7 @@ import me.rerere.hugeicons.stroke.VolumeHigh
 import me.rerere.hugeicons.stroke.Message01
 import me.rerere.hugeicons.stroke.Video01
 import me.rerere.hugeicons.stroke.VideoOff
-import me.rerere.hugeicons.stroke.SwitchCamera01
+import me.rerere.hugeicons.stroke.Camera01
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.service.VoiceCallService
 import me.rerere.rikkahub.ui.components.ui.permission.PermissionRecordAudio
