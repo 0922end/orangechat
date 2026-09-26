@@ -53,6 +53,7 @@ fun VoiceOrb(
         VoiceCallStatus.Processing -> 4000
         VoiceCallStatus.Speaking -> 6000
         VoiceCallStatus.Listening -> 8000
+        VoiceCallStatus.Calling -> 5000
         else -> 12000
     }
     val rotation by infiniteTransition.animateFloat(
