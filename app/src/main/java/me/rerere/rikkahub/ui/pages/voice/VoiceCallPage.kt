@@ -253,7 +253,7 @@ fun VoiceCallPage(conversationId: Uuid, onBack: () -> Unit) {
                 // 视频模式下：翻转摄像头 / 陪伴模式切换
                 if (uiState.isVideoOn) {
                     CallBtn(
-                        HugeIcons.SwitchCamera01,
+                        HugeIcons.Camera01,
                         if (uiState.videoMode == VideoMode.Companion) "实时" else "陪伴",
                         { boundService?.toggleVideoMode() },
                         Color.White.copy(alpha = 0.15f),
