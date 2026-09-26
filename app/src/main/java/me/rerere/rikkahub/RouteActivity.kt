@@ -170,6 +170,7 @@ import me.rerere.rikkahub.ui.pages.stats.StatsPage
 import me.rerere.rikkahub.ui.pages.translator.TranslatorPage
  import me.rerere.rikkahub.ui.pages.voice.IncomingCallPage
  import me.rerere.rikkahub.ui.pages.voice.VoiceCallPage
+import me.rerere.rikkahub.ui.pages.voice.VoiceCallOverlayBar
 import me.rerere.rikkahub.service.VoiceCallService
 import me.rerere.rikkahub.ui.pages.webview.WebViewPage
 import me.rerere.rikkahub.ui.theme.LocalDarkMode
