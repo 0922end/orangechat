@@ -339,44 +339,72 @@ private fun ASRProviderSetting.OpenAIRealtime.websocketEndpoint(): String {
 }
 
 private fun ASRProviderSetting.OpenAIRealtime.sessionUpdateEvent(): JSONObject {
-    val transcription = JSONObject()
-        .put("model", model)
-    if (language.isNotBlank()) transcription.put("language", language)
-    if (prompt.isNotBlank()) transcription.put("prompt", prompt)
+    val isDashScope = websocketUrl.contains("dashscope") || websocketUrl.contains("aliyun")
 
-    return JSONObject()
-        .put("type", "session.update")
-        .put(
-            "session",
-            JSONObject()
-                .put("type", "transcription")
-                .put(
-                    "audio",
-                    JSONObject()
-                        .put(
-                            "input",
-                            JSONObject()
-                                .put(
-                                    "format",
-                                    JSONObject()
-                                        .put("type", "audio/pcm")
-                                        .put("rate", sampleRate)
-                                )
-                                .put("transcription", transcription)
-                                .put(
-                                    "noise_reduction",
-                                    JSONObject()
-                                        .put("type", "near_field")
-                                )
-                                .put(
-                                    "turn_detection",
-                                    JSONObject()
-                                        .put("type", "server_vad")
-                                        .put("threshold", vadThreshold)
-                                        .put("prefix_padding_ms", prefixPaddingMs)
-                                        .put("silence_duration_ms", silenceDurationMs)
-                                )
-                        )
-                )
-        )
+    if (isDashScope) {
+        // 百炼 qwen3-asr-flash-realtime 扁平格式
+        val session = JSONObject()
+            .put("modalities", org.json.JSONArray().put("text"))
+            .put("input_audio_format", "pcm")
+            .put("sample_rate", sampleRate)
+
+        val transcriptionConfig = JSONObject()
+        if (language.isNotBlank()) transcriptionConfig.put("language", language)
+        if (transcriptionConfig.length() > 0) {
+            session.put("input_audio_transcription", transcriptionConfig)
+        }
+
+        val turnDetection = JSONObject()
+            .put("type", "server_vad")
+            .put("threshold", vadThreshold)
+            .put("silence_duration_ms", silenceDurationMs)
+        session.put("turn_detection", turnDetection)
+
+        return JSONObject()
+            .put("type", "session.update")
+            .put("event_id", "evt_${System.currentTimeMillis()}")
+            .put("session", session)
+    } else {
+        // OpenAI 原生嵌套格式
+        val transcription = JSONObject()
+            .put("model", model)
+        if (language.isNotBlank()) transcription.put("language", language)
+        if (prompt.isNotBlank()) transcription.put("prompt", prompt)
+
+        return JSONObject()
+            .put("type", "session.update")
+            .put(
+                "session",
+                JSONObject()
+                    .put("type", "transcription")
+                    .put(
+                        "audio",
+                        JSONObject()
+                            .put(
+                                "input",
+                                JSONObject()
+                                    .put(
+                                        "format",
+                                        JSONObject()
+                                            .put("type", "audio/pcm")
+                                            .put("rate", sampleRate)
+                                    )
+                                    .put("transcription", transcription)
+                                    .put(
+                                        "noise_reduction",
+                                        JSONObject()
+                                            .put("type", "near_field")
+                                    )
+                                    .put(
+                                        "turn_detection",
+                                        JSONObject()
+                                            .put("type", "server_vad")
+                                            .put("threshold", vadThreshold)
+                                            .put("prefix_padding_ms", prefixPaddingMs)
+                                            .put("silence_duration_ms", silenceDurationMs)
+                                    )
+                            )
+                    )
+            )
+    }
 }
