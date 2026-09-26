@@ -106,6 +106,14 @@ fun VoiceCallPage(conversationId: Uuid, onBack: () -> Unit) {
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(ColorCangCang, ColorQieLan)))
     ) {
+        // Calling状态：呼叫等待页面
+        if (uiState.status == VoiceCallStatus.Calling) {
+            CallingWaitScreen(
+                onCancel = { VoiceCallService.stop(context); onBack() }
+            )
+            return@Box
+        }
+
         Column(
             modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally
