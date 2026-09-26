@@ -54,7 +54,7 @@ fun createEndVoiceCallTool(context: Context): Tool = Tool(
 
             // 在主线程执行挂断
             Handler(Looper.getMainLooper()).post {
-                VoiceCallService.stop(context)
+                VoiceCallService.aiHangUp(context)
             }
 
             listOf(UIMessagePart.Text(
