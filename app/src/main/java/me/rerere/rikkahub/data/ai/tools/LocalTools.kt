@@ -589,6 +589,7 @@ class LocalTools(
         }
         if (options.contains(LocalToolOption.RequestVoiceCall) && conversationId != null) {
             tools.add(createRequestVoiceCallTool(conversationId))
+            tools.add(createEndVoiceCallTool(context))
         }
         if (options.contains(LocalToolOption.AskUser)) {
             tools.add(askUserTool)
