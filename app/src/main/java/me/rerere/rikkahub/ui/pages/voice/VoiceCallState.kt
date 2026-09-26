@@ -1,11 +1,5 @@
 package me.rerere.rikkahub.ui.pages.voice
 
-/**
- * Elian 语音通话状态机 (pai-voice turn管理)
- *
- * Idle -> Listening -> Processing -> Speaking -> Listening -> ...
- *                         ↑ (queue)      ↓ (checkQueue)
- */
 enum class VoiceCallStatus {
     Idle,
     Listening,
@@ -21,6 +15,15 @@ data class DialogueLine(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+/**
+ * 视频模式
+ */
+enum class VideoMode {
+    Off,       // 摄像头关闭
+    Live,      // 实时：画面变化就描述
+    Companion  // 陪伴：只在离开/回来/太久没动静时说话
+}
+
 data class VoiceCallUiState(
     val status: VoiceCallStatus = VoiceCallStatus.Idle,
     val userTranscript: String = "",
@@ -32,6 +35,10 @@ data class VoiceCallUiState(
     val callDurationSeconds: Int = 0,
     val dialogue: List<DialogueLine> = emptyList(),
     val queuedMessages: Int = 0,
+    // 视频相关
+    val videoMode: VideoMode = VideoMode.Off,
+    val isFrontCamera: Boolean = true,
+    val lastFrameDescription: String = "",
 ) {
     val isActive: Boolean
         get() = status != VoiceCallStatus.Idle
@@ -39,4 +46,6 @@ data class VoiceCallUiState(
         get() = status == VoiceCallStatus.Listening ||
                 status == VoiceCallStatus.Processing ||
                 status == VoiceCallStatus.Speaking
+    val isVideoOn: Boolean
+        get() = videoMode != VideoMode.Off
 }
