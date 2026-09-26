@@ -356,6 +356,7 @@ private fun CallBtn(icon: androidx.compose.ui.graphics.vector.ImageVector, label
 
 private fun statusText(s: VoiceCallStatus) = when (s) {
     VoiceCallStatus.Idle -> "准备中"
+    VoiceCallStatus.Calling -> "正在呼叫"
     VoiceCallStatus.Listening -> "听你说"
     VoiceCallStatus.Processing -> "思考中"
     VoiceCallStatus.Speaking -> "说话中"
