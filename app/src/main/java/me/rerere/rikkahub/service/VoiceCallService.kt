@@ -288,9 +288,9 @@ class VoiceCallService : Service(), KoinComponent {
                 }
             }
         }
-        // 15秒无响应自动接通（防止AI不回复卡死）
+        // 8秒无响应自动接通（防止AI不回复卡死）
         serviceScope.launch {
-            delay(15000)
+            delay(8000)
             if (_uiState.value.status == VoiceCallStatus.Calling) {
                 callingMonitorJob?.cancel()
                 addDialogueLine(DialogueLine("system", "语音通话已接通"))
