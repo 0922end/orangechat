@@ -208,6 +208,9 @@ class VoiceCallService : Service(), KoinComponent {
 
     // ==================== 核心通话逻辑 ====================
 
+    // AI主动挂断标记
+    private var aiHungUp = false
+
     fun startCall() {
         if (_uiState.value.status != VoiceCallStatus.Idle) return
         generation = 0
@@ -217,23 +220,78 @@ class VoiceCallService : Service(), KoinComponent {
         isMuted = false
         ttsSentLength = 0
         lastAssistantText = ""
+        aiHungUp = false
 
+        // 进入 Calling 状态等 AI 接听
         _uiState.update {
             it.copy(
-                status = VoiceCallStatus.Listening,
+                status = VoiceCallStatus.Calling,
                 userTranscript = "", assistantText = "",
                 errorMessage = null, isMuted = false,
                 callDurationSeconds = 0, dialogue = emptyList(), queuedMessages = 0
             )
         }
+        addDialogueLine(DialogueLine("system", "正在呼叫..."))
 
-        // 通话接通: 发系统消息让AI知道正在通话
+        // 发来电消息给 AI
         try {
             chatService.sendMessage(
                 conversationId,
-                listOf(UIMessagePart.Text("[语音通话已接通]"))
+                listOf(UIMessagePart.Text("[来电:语音通话]"))
             )
         } catch (_: Exception) {}
+
+        // 监听 AI 回复判断接不接
+        startCallingMonitor()
+        startCallTimer()
+    }
+
+    /**
+     * Calling 状态监听: 等 AI 回复 [接听] 或 [拒绝]
+     */
+    private var callingMonitorJob: Job? = null
+    private fun startCallingMonitor() {
+        callingMonitorJob?.cancel()
+        callingMonitorJob = serviceScope.launch {
+            conversation.collect { conv ->
+                if (_uiState.value.status != VoiceCallStatus.Calling) return@collect
+                val lastMessage = conv.currentMessages.lastOrNull()
+                if (lastMessage?.role != MessageRole.ASSISTANT) return@collect
+                val text = lastMessage.toText()
+
+                when {
+                    text.contains("[接听]") || text.contains("【接听】") -> {
+                        callingMonitorJob?.cancel()
+                        addDialogueLine(DialogueLine("system", "语音通话已接通"))
+                        onCallAccepted()
+                    }
+                    text.contains("[拒绝]") || text.contains("【拒绝】") -> {
+                        callingMonitorJob?.cancel()
+                        addDialogueLine(DialogueLine("system", "对方已拒绝"))
+                        // 延迟一下让用户看到
+                        delay(2000)
+                        endCall()
+                    }
+                }
+            }
+        }
+        // 15秒无响应自动接通（防止AI不回复卡死）
+        serviceScope.launch {
+            delay(15000)
+            if (_uiState.value.status == VoiceCallStatus.Calling) {
+                callingMonitorJob?.cancel()
+                addDialogueLine(DialogueLine("system", "语音通话已接通"))
+                onCallAccepted()
+            }
+        }
+    }
+
+    /**
+     * AI 接听后真正开始通话
+     */
+    private fun onCallAccepted() {
+        _uiState.update { it.copy(status = VoiceCallStatus.Listening) }
+        callStartTime = System.currentTimeMillis()
 
         try {
             asr.start { transcript -> _uiState.update { it.copy(userTranscript = transcript) } }
@@ -245,7 +303,6 @@ class VoiceCallService : Service(), KoinComponent {
         startVadDetection()
         startAsrMonitor()
         startConversationMonitor()
-        startCallTimer()
     }
 
     private fun startCallTimer() {
