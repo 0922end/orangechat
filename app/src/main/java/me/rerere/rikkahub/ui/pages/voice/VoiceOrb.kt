@@ -104,6 +104,7 @@ fun VoiceOrb(
         VoiceCallStatus.Listening -> (currentAmplitude * 0.8f + 0.15f).coerceIn(0.15f, 0.8f)
         VoiceCallStatus.Speaking -> 0.5f + (currentAmplitude * 0.3f)
         VoiceCallStatus.Processing -> 0.25f
+        VoiceCallStatus.Calling -> 0.2f
         VoiceCallStatus.Error -> 0.1f
         VoiceCallStatus.Idle -> 0.08f
     }
