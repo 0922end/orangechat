@@ -2,6 +2,7 @@ package me.rerere.rikkahub.ui.pages.voice
 
 enum class VoiceCallStatus {
     Idle,
+    Calling,    // 正在呼叫，等AI接听
     Listening,
     Processing,
     Speaking,
