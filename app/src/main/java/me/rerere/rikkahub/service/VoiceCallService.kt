@@ -431,7 +431,7 @@ class VoiceCallService : Service(), KoinComponent {
     // ========== 视频陪伴模式 ==========
     
     private fun startCameraCapture() {
-        if (_uiState.value.videoMode == VideoMode.None) return
+        if (_uiState.value.videoMode == VideoMode.Off) return
         
         cameraJob?.cancel()
         cameraJob = serviceScope.launch {
