@@ -251,14 +251,15 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingSpeech) },
-                    )
-                    SettingItem(
-                        title = "视觉模型",
-                        subtitle = "视频通话的画面识别模型配置",
-                        onClick = { navController.navigate(Screen.SettingVision) },
                         leadingContent = { Icon(HugeIcons.Megaphone01, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_tts_service_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_tts_service)) },
+                    )
+                    item(
+                        onClick = { navController.navigate(Screen.SettingVision) },
+                        leadingContent = { Icon(HugeIcons.ImageUpload, null) },
+                        supportingContent = { Text("视频通话的画面识别模型配置") },
+                        headlineContent = { Text("视觉模型") },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingMcp) },
