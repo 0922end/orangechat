@@ -533,6 +533,7 @@ class VoiceCallService : Service(), KoinComponent {
     private fun startForeground() {
         val intent = Intent(this, RouteActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("openVoiceCallConversationId", conversationId.toString())
         }
         val pendingIntent = PendingIntent.getActivity(
             this,
@@ -544,7 +545,7 @@ class VoiceCallService : Service(), KoinComponent {
         val notification = NotificationCompat.Builder(this, VOICE_CALL_NOTIFICATION_CHANNEL_ID)
             .setContentTitle("Elian 通话中")
             .setContentText("点击返回通话界面")
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()
@@ -556,5 +557,19 @@ class VoiceCallService : Service(), KoinComponent {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or 
             ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
         )
+    }
+    
+    companion object {
+        private val _activeConversationId = MutableStateFlow<String?>(null)
+        val activeConversationId: StateFlow<String?> = _activeConversationId.asStateFlow()
+        
+        fun isInCall(): Boolean = _activeConversationId.value != null
+        
+        /**
+         * 停止通话服务
+         */
+        fun stopService(context: Context) {
+            context.stopService(Intent(context, VoiceCallService::class.java))
+        }
     }
 }
