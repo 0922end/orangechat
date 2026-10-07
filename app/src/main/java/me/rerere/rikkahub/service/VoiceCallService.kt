@@ -144,24 +144,36 @@ class VoiceCallService : Service(), KoinComponent {
         
         voiceManager = VoiceCallManager(
             context = this,
-            settingsStore = settingsStore,
-            onUserSpoke = { text ->
+            scope = serviceScope,
+            onUserSpeech = { text ->
                 serviceScope.launch {
                     processUserInput(text)
                 }
             },
-            onThinkingChanged = { thinking ->
-                _uiState.update { it.copy(isThinking = thinking) }
-            },
-            onListeningChanged = { listening ->
-                val newStatus = if (listening) {
-                    VoiceCallStatus.Listening
-                } else {
-                    VoiceCallStatus.Speaking
+            onStatusChange = { state ->
+                _uiState.update { 
+                    it.copy(
+                        isThinking = state.isThinking,
+                        status = when {
+                            state.isSpeaking -> VoiceCallStatus.Speaking
+                            state.isListening -> VoiceCallStatus.Listening
+                            else -> it.status
+                        }
+                    )
                 }
-                _uiState.update { it.copy(status = newStatus) }
             }
         )
+        
+        // 配置 API Keys（从 settingsStore 读取）
+        serviceScope.launch {
+            settingsStore.data.collect { settings ->
+                voiceManager?.configure(
+                    qwenKey = settings.asrConfig?.apiKey ?: "",
+                    elevenKey = settings.ttsConfig?.apiKey ?: "",
+                    voiceId = settings.ttsConfig?.voiceId ?: ""
+                )
+            }
+        }
         
         Log.d(TAG, "VoiceCallManager 已初始化")
     }
