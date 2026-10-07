@@ -41,7 +41,7 @@ fun createEndVoiceCallTool(context: Context): Tool = Tool(
         val reason = params["reason"]?.jsonPrimitive?.contentOrNull ?: "AI decided to hang up"
 
         try {
-            if (!VoiceCallService.isRunning()) {
+            if (VoiceCallService.activeConversationId.value == null) {
                 return@Tool listOf(UIMessagePart.Text(
                     buildJsonObject {
                         put("success", false)
@@ -54,7 +54,7 @@ fun createEndVoiceCallTool(context: Context): Tool = Tool(
 
             // 在主线程执行挂断
             Handler(Looper.getMainLooper()).post {
-                VoiceCallService.aiHangUp(context)
+                VoiceCallService.stopService(context)
             }
 
             listOf(UIMessagePart.Text(
