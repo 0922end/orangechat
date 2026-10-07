@@ -76,7 +76,7 @@ fun VoiceCallPage(conversationId: Uuid, onBack: () -> Unit) {
     val connection = remember {
         object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
-                boundService = (binder as? VoiceCallService.LocalBinder)?.getService()
+                boundService = (binder as? VoiceCallService.VoiceCallBinder)?.getService()
             }
             override fun onServiceDisconnected(name: ComponentName?) { boundService = null }
         }
