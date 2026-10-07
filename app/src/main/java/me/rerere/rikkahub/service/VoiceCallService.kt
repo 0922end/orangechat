@@ -346,7 +346,7 @@ class VoiceCallService : Service(), KoinComponent {
         conversationMonitorJob?.cancel()
         conversationMonitorJob = serviceScope.launch {
             conversation.collect { conv ->
-                val messages = conv.messages
+                val messages = conv.currentMessages
                 if (messages.isEmpty()) return@collect
                 
                 val lastMessage = messages.last()
@@ -355,7 +355,7 @@ class VoiceCallService : Service(), KoinComponent {
                 if (lastMessage.role != MessageRole.Assistant) return@collect
                 
                 // 提取文本内容
-                val text = lastMessage.content.filterIsInstance<me.rerere.ai.ui.UIMessagePart.Text>()
+                val text = lastMessage.parts.filterIsInstance<UIMessagePart.Text>()
                     .joinToString("") { it.text }
                 
                 if (text.isBlank()) return@collect
