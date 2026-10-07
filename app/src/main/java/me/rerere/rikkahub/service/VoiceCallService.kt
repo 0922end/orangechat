@@ -94,6 +94,37 @@ class VoiceCallService : Service(), KoinComponent {
         Log.d(TAG, "Service创建")
     }
     
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val convIdStr = intent?.getStringExtra("conversationId")
+        if (convIdStr == null) {
+            Log.w(TAG, "没有 conversationId，停止 Service")
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        
+        // 已经在通话中，忽略重复启动
+        if (_activeConversationId.value == convIdStr) {
+            return START_NOT_STICKY
+        }
+        
+        // 已经有别的通话在进行
+        if (_activeConversationId.value != null && _activeConversationId.value != convIdStr) {
+            Log.w(TAG, "已有通话进行中，拒绝新通话")
+            return START_NOT_STICKY
+        }
+        
+        try {
+            val uuid = Uuid.parse(convIdStr)
+            val isIncoming = intent.getBooleanExtra("incoming", false)
+            startCall(conversationId = uuid, incomingCall = isIncoming)
+        } catch (e: Exception) {
+            Log.e(TAG, "启动通话失败", e)
+            stopSelf()
+        }
+        
+        return START_NOT_STICKY
+    }
+    
     override fun onDestroy() {
         super.onDestroy()
         endCall()
