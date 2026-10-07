@@ -833,10 +833,10 @@ entry<Screen.Extensions> {
                                         // (AI 刚说完话触发主动来电时, 聊天页的 TTS 可能还在播放)
                                         runCatching { tts.stop() }
                                         if (VoiceCallService.activeConversationId.value == null) {
-                                            VoiceCallService.start(
-                                                this@RouteActivity,
-                                                convId
-                                            )
+                                            val intent = Intent(this@RouteActivity, VoiceCallService::class.java).apply {
+                                                putExtra("conversationId", convId)
+                                            }
+                                            this@RouteActivity.startService(intent)
                                         }
                                         // 替换来电页为通话页
                                         backStack.removeLastOrNull()
