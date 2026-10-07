@@ -115,7 +115,7 @@ fun VoiceCallPage(conversationId: Uuid, onBack: () -> Unit) {
         // Calling状态：呼叫等待页面
         if (uiState.status == VoiceCallStatus.Calling) {
             CallingWaitScreen(
-                onCancel = { VoiceCallService.stop(context); onBack() }
+                onCancel = { boundService?.endCall(); onBack() }
             )
             return@Box
         }
