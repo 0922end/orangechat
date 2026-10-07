@@ -164,15 +164,14 @@ class VoiceCallService : Service(), KoinComponent {
             }
         )
         
-        // 配置 API Keys（从 settingsStore 读取）
+        // 配置 API Keys（从 settingsStore 读取一次）
         serviceScope.launch {
-            settingsStore.data.collect { settings ->
-                voiceManager?.configure(
-                    qwenKey = settings.asrConfig?.apiKey ?: "",
-                    elevenKey = settings.ttsConfig?.apiKey ?: "",
-                    voiceId = settings.ttsConfig?.voiceId ?: ""
-                )
-            }
+            val settings = settingsStore.data.first()
+            voiceManager?.configure(
+                qwenKey = settings.asrConfig?.apiKey ?: "",
+                elevenKey = settings.ttsConfig?.apiKey ?: "",
+                voiceId = settings.ttsConfig?.voiceId ?: ""
+            )
         }
         
         Log.d(TAG, "VoiceCallManager 已初始化")
