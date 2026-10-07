@@ -40,6 +40,7 @@ private const val TAG = "VoiceCallService"
 class VoiceCallService : Service(), KoinComponent {
     private val chatService: ChatService by inject()
     private val settingsStore: SettingsStore by inject()
+    private val cameraService by lazy { CameraService(this) }
 
     private val serviceScope = CoroutineScope(
         SupervisorJob() + Dispatchers.Main + CoroutineExceptionHandler { _, e ->
