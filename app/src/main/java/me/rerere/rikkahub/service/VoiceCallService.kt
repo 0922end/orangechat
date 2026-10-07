@@ -338,8 +338,7 @@ class VoiceCallService : Service(), KoinComponent {
         // 发送给ChatService
         chatService.sendMessage(
             conversationId = conversationId,
-            role = MessageRole.User,
-            text = text
+            content = text
         )
         
         // 设置思考状态
