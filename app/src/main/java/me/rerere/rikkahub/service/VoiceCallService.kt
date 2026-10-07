@@ -239,14 +239,14 @@ class VoiceCallService : Service(), KoinComponent {
     fun toggleVideoMode() {
         val current = _uiState.value.videoMode
         val next = when (current) {
-            VideoMode.None -> VideoMode.Camera
-            VideoMode.Camera -> VideoMode.Screen
-            VideoMode.Screen -> VideoMode.None
+            VideoMode.Off -> VideoMode.Live
+            VideoMode.Live -> VideoMode.Companion
+            VideoMode.Companion -> VideoMode.Off
         }
         
         _uiState.update { it.copy(videoMode = next) }
         
-        if (next == VideoMode.None) {
+        if (next == VideoMode.Off) {
             cameraJob?.cancel()
             cameraJob = null
         } else if (cameraJob == null) {
