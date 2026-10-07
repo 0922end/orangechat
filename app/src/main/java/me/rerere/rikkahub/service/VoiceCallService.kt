@@ -80,13 +80,6 @@ class VoiceCallService : Service(), KoinComponent {
     // ========== 来电状态 ==========
     private var aiHungUp = false
     
-    companion object {
-        private val _activeConversationId = MutableStateFlow<String?>(null)
-        val activeConversationId: StateFlow<String?> = _activeConversationId.asStateFlow()
-        
-        fun isInCall(): Boolean = _activeConversationId.value != null
-    }
-    
     // ========== Service生命周期 ==========
     
     override fun onBind(intent: Intent?): IBinder = VoiceCallBinder()
