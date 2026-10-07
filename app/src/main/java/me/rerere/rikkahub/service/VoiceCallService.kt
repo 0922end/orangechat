@@ -135,6 +135,53 @@ class VoiceCallService : Service(), KoinComponent {
     // ========== 通话控制 ==========
     
     /**
+     * 初始化语音管理器
+     */
+    private fun initVoiceManager() {
+        if (voiceManager != null) {
+            voiceManager?.stopCall()
+        }
+        
+        voiceManager = VoiceCallManager(
+            context = this,
+            settingsStore = settingsStore,
+            onUserSpoke = { text ->
+                serviceScope.launch {
+                    processUserInput(text)
+                }
+            },
+            onThinkingChanged = { thinking ->
+                _uiState.update { it.copy(isThinking = thinking) }
+            },
+            onListeningChanged = { listening ->
+                val newStatus = if (listening) {
+                    VoiceCallStatus.Listening
+                } else {
+                    VoiceCallStatus.Speaking
+                }
+                _uiState.update { it.copy(status = newStatus) }
+            }
+        )
+        
+        Log.d(TAG, "VoiceCallManager 已初始化")
+    }
+    
+    /**
+     * 初始化视觉链
+     */
+    private fun initVisionChain() {
+        visionChain = VisionChain(
+            context = this,
+            settingsStore = settingsStore
+        )
+        
+        // 启动摄像头采集
+        startCameraCapture()
+        
+        Log.d(TAG, "VisionChain 已初始化")
+    }
+    
+    /**
      * 启动通话
      */
     fun startCall(
