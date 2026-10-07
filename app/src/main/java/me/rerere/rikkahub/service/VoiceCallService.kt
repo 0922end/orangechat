@@ -135,64 +135,6 @@ class VoiceCallService : Service(), KoinComponent {
     // ========== 通话控制 ==========
     
     /**
-     * 初始化语音管理器
-     */
-    private fun initVoiceManager() {
-        if (voiceManager != null) {
-            voiceManager?.stopCall()
-        }
-        
-        voiceManager = VoiceCallManager(
-            context = this,
-            scope = serviceScope,
-            onUserSpeech = { text ->
-                serviceScope.launch {
-                    processUserInput(text)
-                }
-            },
-            onStatusChange = { state ->
-                _uiState.update { 
-                    it.copy(
-                        isThinking = state.isThinking,
-                        status = when {
-                            state.isSpeaking -> VoiceCallStatus.Speaking
-                            state.isListening -> VoiceCallStatus.Listening
-                            else -> it.status
-                        }
-                    )
-                }
-            }
-        )
-        
-        // 配置 API Keys（从 settingsStore 读取一次）
-        serviceScope.launch {
-            val settings = settingsStore.data.first()
-            voiceManager?.configure(
-                qwenKey = settings.asrConfig?.apiKey ?: "",
-                elevenKey = settings.ttsConfig?.apiKey ?: "",
-                voiceId = settings.ttsConfig?.voiceId ?: ""
-            )
-        }
-        
-        Log.d(TAG, "VoiceCallManager 已初始化")
-    }
-    
-    /**
-     * 初始化视觉链
-     */
-    private fun initVisionChain() {
-        visionChain = VisionChain(
-            context = this,
-            settingsStore = settingsStore
-        )
-        
-        // 启动摄像头采集
-        startCameraCapture()
-        
-        Log.d(TAG, "VisionChain 已初始化")
-    }
-    
-    /**
      * 启动通话
      */
     fun startCall(
@@ -344,6 +286,10 @@ class VoiceCallService : Service(), KoinComponent {
     // ========== 初始化模块 ==========
     
     private fun initVoiceManager() {
+        if (voiceManager != null) {
+            voiceManager?.stopCall()
+        }
+        
         voiceManager = VoiceCallManager(
             context = this,
             scope = serviceScope,
@@ -368,22 +314,34 @@ class VoiceCallService : Service(), KoinComponent {
             }
         )
         
-        // 配置API Keys
-        val prefs = getSharedPreferences("voice_config", MODE_PRIVATE)
-        voiceManager?.configure(
-            qwenKey = prefs.getString("qwen_key", "") ?: "",
-            elevenKey = prefs.getString("eleven_key", "") ?: "",
-            voiceId = prefs.getString("eleven_voice", "") ?: ""
-        )
+        // 配置API Keys（从SettingsStore读取）
+        serviceScope.launch {
+            val settings = settingsStore.data.first()
+            val asrKey = settings.asrConfig?.apiKey ?: ""
+            val ttsKey = settings.ttsConfig?.apiKey ?: ""
+            val voiceId = settings.ttsConfig?.voiceId ?: ""
+            
+            voiceManager?.configure(
+                qwenKey = asrKey,
+                elevenKey = ttsKey,
+                voiceId = voiceId
+            )
+            
+            Log.d(TAG, "VoiceCallManager 已配置")
+        }
+        
+        Log.d(TAG, "VoiceCallManager 已初始化")
     }
     
     private fun initVisionChain() {
         visionChain = VisionChain(
             context = this,
-            scope = serviceScope
+            settingsStore = settingsStore
         )
         
         startCameraCapture()
+        
+        Log.d(TAG, "VisionChain 已初始化")
     }
     
     // ========== 用户输入处理 ==========
@@ -471,7 +429,7 @@ class VoiceCallService : Service(), KoinComponent {
         ttsSentLength = fullText.length
         
         // 分句处理
-        val sentences = newText.split(Regex("[。！？\n]+")).filter { it.isNotBlank() }
+        val sentences = newText.split(Regex("[。！？\\n]+")).filter { it.isNotBlank() }
         
         for (sentence in sentences) {
             val trimmed = sentence.trim()
