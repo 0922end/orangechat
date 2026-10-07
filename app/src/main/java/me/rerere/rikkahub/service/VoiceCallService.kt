@@ -353,7 +353,7 @@ class VoiceCallService : Service(), KoinComponent {
                 val lastMessage = messages.last()
                 
                 // 只处理助手消息
-                if (lastMessage.role != MessageRole.Assistant) return@collect
+                if (lastMessage.role != MessageRole.ASSISTANT) return@collect
                 
                 // 提取文本内容
                 val text = lastMessage.parts.filterIsInstance<UIMessagePart.Text>()
