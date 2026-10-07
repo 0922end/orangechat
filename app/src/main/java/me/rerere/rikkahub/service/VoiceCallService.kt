@@ -463,10 +463,30 @@ class VoiceCallService : Service(), KoinComponent {
         }
     }
     
-    private fun captureCurrentFrame(): ByteArray? {
-        // TODO: 实现摄像头采集
-        // 复用现有的摄像头代码或用 CameraX
-        return null
+    private suspend fun captureCurrentFrame(): ByteArray? {
+        if (!cameraService.hasCameraPermission()) {
+            Log.w(TAG, "摄像头权限未授予")
+            return null
+        }
+        
+        val useFront = _uiState.value.videoMode == VideoMode.Companion
+        
+        return try {
+            val result = cameraService.capturePhoto(
+                useFrontCamera = useFront,
+                enableFlash = false
+            )
+            
+            if (result.success && result.imageData != null) {
+                result.imageData
+            } else {
+                Log.w(TAG, "拍照失败: ${result.error}")
+                null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "拍照异常", e)
+            null
+        }
     }
     
     private suspend fun injectSystemMessage(text: String) {
