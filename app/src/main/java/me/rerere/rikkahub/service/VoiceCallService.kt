@@ -425,7 +425,7 @@ class VoiceCallService : Service(), KoinComponent {
     }
     
     private fun updateDialogueUI() {
-        _uiState.update { it.copy(dialogueLines = dialogueLines.toList()) }
+        _uiState.update { it.copy(dialogue = dialogueLines.toList()) }
     }
     
     // ========== 视频陪伴模式 ==========
