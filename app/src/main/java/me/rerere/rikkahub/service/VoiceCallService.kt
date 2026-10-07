@@ -112,7 +112,7 @@ class VoiceCallService : Service(), KoinComponent {
      */
     fun startCall(
         conversationId: Uuid,
-        videoMode: VideoMode = VideoMode.None,
+        videoMode: VideoMode = VideoMode.Off,
         incomingCall: Boolean = false
     ) {
         if (isInCall()) {
@@ -501,7 +501,7 @@ class VoiceCallService : Service(), KoinComponent {
         timerJob = serviceScope.launch {
             while (isActive) {
                 val duration = (System.currentTimeMillis() - callStartTime) / 1000
-                _uiState.update { it.copy(callDuration = duration.toInt()) }
+                _uiState.update { it.copy(callDurationSeconds = duration.toInt()) }
                 delay(1000)
             }
         }
