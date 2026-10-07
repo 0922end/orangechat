@@ -318,7 +318,7 @@ class VoiceCallService : Service(), KoinComponent {
         val currentStatus = _uiState.value.status
         
         when (currentStatus) {
-            VoiceCallStatus.Speaking, VoiceCallStatus.Thinking -> {
+            VoiceCallStatus.Speaking, VoiceCallStatus.Processing -> {
                 // AI正在说话或思考，排队
                 pendingQueue.offer(text)
                 Log.d(TAG, "用户输入排队: $text")
