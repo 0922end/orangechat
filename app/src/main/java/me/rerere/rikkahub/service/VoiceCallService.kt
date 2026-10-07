@@ -331,7 +331,7 @@ class VoiceCallService : Service(), KoinComponent {
         // 发送给ChatService
         chatService.sendMessage(
             conversationId = conversationId,
-            content = text
+            content = listOf(UIMessagePart.Text(text))
         )
         
         // 设置思考状态
