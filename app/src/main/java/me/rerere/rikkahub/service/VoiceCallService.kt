@@ -538,7 +538,7 @@ class VoiceCallService : Service(), KoinComponent {
         val notification = NotificationCompat.Builder(this, VOICE_CALL_NOTIFICATION_CHANNEL_ID)
             .setContentTitle("Elian 通话中")
             .setContentText("点击返回通话界面")
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()
