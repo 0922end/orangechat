@@ -131,8 +131,8 @@ class VoiceCallService : Service(), KoinComponent {
             it.copy(
                 status = if (incomingCall) VoiceCallStatus.Calling else VoiceCallStatus.Listening,
                 videoMode = videoMode,
-                callDuration = 0,
-                dialogueLines = emptyList()
+                callDurationSeconds = 0,
+                dialogue = emptyList()
             )
         }
         
