@@ -271,12 +271,12 @@ class VoiceCallService : Service(), KoinComponent {
                 _uiState.update {
                     it.copy(
                         status = when {
-                            state.isThinking -> VoiceCallStatus.Thinking
+                            state.isThinking -> VoiceCallStatus.Processing
                             state.isSpeaking -> VoiceCallStatus.Speaking
                             state.isListening -> VoiceCallStatus.Listening
                             else -> it.status
                         },
-                        amplitude = state.amplitude,
+                        amplitudes = it.amplitudes + state.amplitude,
                         isMuted = state.isMuted
                     )
                 }
