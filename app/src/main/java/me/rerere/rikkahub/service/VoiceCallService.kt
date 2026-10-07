@@ -140,7 +140,7 @@ class VoiceCallService : Service(), KoinComponent {
         initVoiceManager()
         
         // 初始化视觉链
-        if (videoMode != VideoMode.None) {
+        if (videoMode != VideoMode.Off) {
             initVisionChain()
         }
         
