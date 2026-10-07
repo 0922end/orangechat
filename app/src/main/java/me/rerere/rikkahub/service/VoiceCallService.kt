@@ -11,786 +11,529 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
-import androidx.core.content.ContextCompat
-import kotlinx.coroutines.CoroutineExceptionHandler
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
 import me.rerere.ai.core.MessageRole
-import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.RouteActivity
 import me.rerere.rikkahub.VOICE_CALL_NOTIFICATION_CHANNEL_ID
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.model.Conversation
-import me.rerere.rikkahub.ui.hooks.CustomAsrState
-import me.rerere.rikkahub.ui.hooks.CustomTtsState
-import me.rerere.rikkahub.ui.hooks.createCustomAsrState
-import me.rerere.rikkahub.ui.hooks.createCustomTtsState
-import me.rerere.rikkahub.ui.pages.voice.DialogueLine
-import me.rerere.rikkahub.ui.pages.voice.VideoMode
-import me.rerere.rikkahub.ui.pages.voice.VoiceCallStatus
-import me.rerere.rikkahub.ui.pages.voice.VoiceCallUiState
-import okhttp3.OkHttpClient
+import me.rerere.rikkahub.ui.pages.voice.*
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
+import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.uuid.Uuid
 
 private const val TAG = "VoiceCallService"
 
 /**
- * Elian 语音通话服务 — pai-voice turn管理 + 橘瓣chatService
- *
- * 核心改动:
- * 1. generation 机制: 每轮对话递增, 旧回复 generation 不匹配则丢弃
- * 2. Mode B 消息队列: TTS 播放/AI思考期间用户新话排队, 播完再处理
- * 3. 独白机制: AI回复 [独白] 前缀的内容只显示不播 TTS
- * 4. 通话计时: 实时秒数
- * 5. 对话记录: 完整 dialogue 列表供 UI 滚动显示
+ * Elian 语音/视频通话服务 - pai-voice 完整版
+ * 
+ * 核心模块：
+ * 1. VoiceCallManager - 精准VAD + 温和打断 + 云端ASR/TTS
+ * 2. VisionChain - 多模型视觉链 + 画面检测 + 陪伴模式
+ * 3. generation机制 - 防止旧回复覆盖新回复
+ * 4. 消息队列 - AI说话时用户输入排队
  */
 class VoiceCallService : Service(), KoinComponent {
     private val chatService: ChatService by inject()
-    private val httpClient: OkHttpClient by inject()
     private val settingsStore: SettingsStore by inject()
 
     private val serviceScope = CoroutineScope(
         SupervisorJob() + Dispatchers.Main + CoroutineExceptionHandler { _, e ->
-            Log.e(TAG, "coroutine exception", e)
+            Log.e(TAG, "协程异常", e)
         }
     )
 
+    // ========== 核心模块 ==========
+    private var voiceManager: VoiceCallManager? = null
+    private var visionChain: VisionChain? = null
+    
+    // ========== 对话管理 ==========
     private lateinit var conversationId: Uuid
-    private lateinit var asr: CustomAsrState
-    private lateinit var tts: CustomTtsState
-
+    private var generation = 0
+    private val pendingQueue = ConcurrentLinkedQueue<String>()
+    private val dialogueLines = mutableListOf<DialogueLine>()
+    
+    // ========== UI状态 ==========
     private val _uiState = MutableStateFlow(VoiceCallUiState())
     val uiState: StateFlow<VoiceCallUiState> = _uiState.asStateFlow()
-
+    
     val conversation: StateFlow<Conversation>
         get() = chatService.getConversationFlow(conversationId)
-
-    // === pai-voice turn管理 ===
-    private var generation = 0
-    private val pendingQueue = java.util.concurrent.ConcurrentLinkedQueue<String>()
-    private val dialogueLines = mutableListOf<DialogueLine>()
-
-    // === 状态跟踪 ===
-    private var isMuted = false
-    private var ttsSentLength = 0
-    private var lastAssistantText = ""
+    
+    // ========== 通话状态 ==========
     private var callStartTime = 0L
-
-    // === 协程任务 ===
-    private var vadJob: Job? = null
+    private var isMuted = false
+    private var lastAssistantText = ""
+    private var ttsSentLength = 0
+    
+    // ========== 协程任务 ==========
     private var conversationMonitorJob: Job? = null
-    private var speakingMonitorJob: Job? = null
-    private var asrMonitorJob: Job? = null
     private var timerJob: Job? = null
-
+    private var cameraJob: Job? = null
+    private var callingMonitorJob: Job? = null
+    
+    // ========== 来电状态 ==========
+    private var aiHungUp = false
+    
     companion object {
         private val _activeConversationId = MutableStateFlow<String?>(null)
         val activeConversationId: StateFlow<String?> = _activeConversationId.asStateFlow()
-
-        fun isRunning(): Boolean = _activeConversationId.value != null
-
-        fun start(context: Context, conversationId: String) {
-            val intent = Intent(context, VoiceCallService::class.java).apply {
-                putExtra(EXTRA_CONVERSATION_ID, conversationId)
-            }
-            try {
-                ContextCompat.startForegroundService(context, intent)
-            } catch (e: Exception) {
-                Log.e(TAG, "启动 VoiceCallService 失败", e)
-            }
-        }
-
-        fun stop(context: Context) {
-            try {
-                context.stopService(Intent(context, VoiceCallService::class.java))
-            } catch (e: Exception) {
-                Log.e(TAG, "停止 VoiceCallService 失败", e)
-            }
-        }
-
-        /**
-         * AI 主动挂断: 设置标记后停止服务
-         * 用户会看到 "对方已挂断" 而不是普通的通话结束
-         */
-        @Volatile
-        var pendingAiHangUp = false
-            private set
-
-        fun aiHangUp(context: Context) {
-            pendingAiHangUp = true
-            stop(context)
-        }
-
-        const val EXTRA_CONVERSATION_ID = "conversationId"
-        const val ACTION_HANG_UP = "me.rerere.rikkahub.VOICE_CALL_HANG_UP"
-        const val NOTIFICATION_ID = 40001
+        
+        fun isInCall(): Boolean = _activeConversationId.value != null
     }
-
-    inner class LocalBinder : Binder() {
+    
+    // ========== Service生命周期 ==========
+    
+    override fun onBind(intent: Intent?): IBinder = VoiceCallBinder()
+    
+    inner class VoiceCallBinder : Binder() {
         fun getService(): VoiceCallService = this@VoiceCallService
     }
-
-    private val binder = LocalBinder()
-    override fun onBind(intent: Intent?): IBinder = binder
-
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_HANG_UP) {
-            endCall()
-            stopSelf()
-            return START_NOT_STICKY
+    
+    override fun onCreate() {
+        super.onCreate()
+        Log.d(TAG, "Service创建")
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        endCall()
+        serviceScope.cancel()
+        Log.d(TAG, "Service销毁")
+    }
+    
+    // ========== 通话控制 ==========
+    
+    /**
+     * 启动通话
+     */
+    fun startCall(
+        conversationId: Uuid,
+        videoMode: VideoMode = VideoMode.None,
+        incomingCall: Boolean = false
+    ) {
+        if (isInCall()) {
+            Log.w(TAG, "已在通话中")
+            return
         }
-
-        val convIdStr = intent?.getStringExtra(EXTRA_CONVERSATION_ID)
-        if (convIdStr == null) {
-            stopSelf()
-            return START_NOT_STICKY
-        }
-
-        if (_activeConversationId.value == convIdStr) return START_NOT_STICKY
-        if (_activeConversationId.value != null && _activeConversationId.value != convIdStr) {
-            return START_NOT_STICKY
-        }
-
-        try {
-            conversationId = Uuid.parse(convIdStr)
-        } catch (e: Exception) {
-            stopSelf()
-            return START_NOT_STICKY
-        }
-
-        _activeConversationId.value = convIdStr
-
-        try {
-            ServiceCompat.startForeground(
-                this, NOTIFICATION_ID, buildNotification(_uiState.value),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+        
+        this.conversationId = conversationId
+        this.generation = 0
+        this.callStartTime = System.currentTimeMillis()
+        this.aiHungUp = false
+        
+        _activeConversationId.value = conversationId.toString()
+        
+        _uiState.update {
+            it.copy(
+                status = if (incomingCall) VoiceCallStatus.Calling else VoiceCallStatus.Listening,
+                videoMode = videoMode,
+                callDuration = 0,
+                dialogueLines = emptyList()
             )
-        } catch (e: Exception) {
-            _activeConversationId.value = null
-            stopSelf()
-            return START_NOT_STICKY
         }
-
-        serviceScope.launch {
-            try {
-                asr = createCustomAsrState(applicationContext, httpClient, settingsStore)
-                tts = createCustomTtsState(applicationContext, settingsStore)
-                startCall()
-
-                launch {
-                    uiState.collect { state ->
-                        try {
-                            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                            manager.notify(NOTIFICATION_ID, buildNotification(state))
-                        } catch (_: Exception) {}
-                    }
-                }
-
-                launch {
-                    asr.state.collect { asrState ->
-                        updateAmplitudes(asrState.amplitudes)
-                        if (asrState.status == me.rerere.asr.ASRStatus.Error) {
-                            _uiState.update {
-                                it.copy(status = VoiceCallStatus.Error,
-                                    errorMessage = "语音识别错误: ${asrState.errorMessage}")
-                            }
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(status = VoiceCallStatus.Error, errorMessage = "初始化失败: ${e.message}")
-                }
+        
+        // 初始化语音管理器
+        initVoiceManager()
+        
+        // 初始化视觉链
+        if (videoMode != VideoMode.None) {
+            initVisionChain()
+        }
+        
+        // 启动前台服务
+        startForeground()
+        
+        // 启动监控任务
+        if (incomingCall) {
+            startCallingMonitor()
+        } else {
+            startConversationMonitor()
+            startCallTimer()
+            
+            serviceScope.launch {
+                voiceManager?.startCall()
             }
         }
-
-        return START_NOT_STICKY
+        
+        Log.d(TAG, "通话已启动: conversationId=$conversationId, videoMode=$videoMode")
     }
-
-    // ==================== 核心通话逻辑 ====================
-
-    // AI主动挂断标记
-    private var aiHungUp = false
-
-    fun startCall() {
-        if (_uiState.value.status != VoiceCallStatus.Idle) return
-        generation = 0
+    
+    /**
+     * 结束通话
+     */
+    fun endCall() {
+        if (!isInCall()) return
+        
+        // 停止所有任务
+        conversationMonitorJob?.cancel()
+        timerJob?.cancel()
+        cameraJob?.cancel()
+        callingMonitorJob?.cancel()
+        
+        // 停止语音管理器
+        voiceManager?.stopCall()
+        voiceManager = null
+        
+        // 清理视觉链
+        visionChain = null
+        
+        // 清理状态
+        _activeConversationId.value = null
         pendingQueue.clear()
         dialogueLines.clear()
-        callStartTime = System.currentTimeMillis()
-        isMuted = false
-        ttsSentLength = 0
-        lastAssistantText = ""
-        aiHungUp = false
-
-        // 进入 Calling 状态等 AI 接听
-        _uiState.update {
-            it.copy(
-                status = VoiceCallStatus.Calling,
-                userTranscript = "", assistantText = "",
-                errorMessage = null, isMuted = false,
-                callDurationSeconds = 0, dialogue = emptyList(), queuedMessages = 0
-            )
-        }
-        addDialogueLine(DialogueLine("system", "正在呼叫..."))
-
-        // 发来电消息给 AI
-        try {
-            chatService.sendMessage(
-                conversationId,
-                listOf(UIMessagePart.Text("[来电:语音通话]"))
-            )
-        } catch (_: Exception) {}
-
-        // 监听 AI 回复判断接不接
-        startCallingMonitor()
-        startCallTimer()
+        
+        _uiState.value = VoiceCallUiState()
+        
+        // 停止前台服务
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        stopSelf()
+        
+        Log.d(TAG, "通话已结束")
     }
-
+    
     /**
-     * Calling 状态监听: 等 AI 回复 [接听] 或 [拒绝]
+     * 接听来电
      */
-    private var callingMonitorJob: Job? = null
-    private fun startCallingMonitor() {
+    fun acceptCall() {
+        if (_uiState.value.status != VoiceCallStatus.Calling) return
+        
         callingMonitorJob?.cancel()
-        callingMonitorJob = serviceScope.launch {
-            conversation.collect { conv ->
-                if (_uiState.value.status != VoiceCallStatus.Calling) return@collect
-                val lastMessage = conv.currentMessages.lastOrNull()
-                if (lastMessage?.role != MessageRole.ASSISTANT) return@collect
-                val text = lastMessage.toText()
-
-                when {
-                    text.contains("[接听]") || text.contains("【接听】") -> {
-                        callingMonitorJob?.cancel()
-                        addDialogueLine(DialogueLine("system", "语音通话已接通"))
-                        onCallAccepted()
-                    }
-                    text.contains("[拒绝]") || text.contains("【拒绝】") -> {
-                        callingMonitorJob?.cancel()
-                        addDialogueLine(DialogueLine("system", "对方已拒绝"))
-                        // 延迟一下让用户看到
-                        delay(2000)
-                        endCall()
-                    }
-                }
-            }
-        }
-        // 8秒无响应自动接通（防止AI不回复卡死）
-        serviceScope.launch {
-            delay(8000)
-            if (_uiState.value.status == VoiceCallStatus.Calling) {
-                callingMonitorJob?.cancel()
-                addDialogueLine(DialogueLine("system", "语音通话已接通"))
-                onCallAccepted()
-            }
-        }
-    }
-
-    /**
-     * AI 接听后真正开始通话
-     */
-    private fun onCallAccepted() {
+        
         _uiState.update { it.copy(status = VoiceCallStatus.Listening) }
-        callStartTime = System.currentTimeMillis()
-
-        try {
-            asr.start { transcript -> _uiState.update { it.copy(userTranscript = transcript) } }
-        } catch (e: Exception) {
-            _uiState.update { it.copy(status = VoiceCallStatus.Error, errorMessage = "麦克风启动失败: ${e.message}") }
-            return
-        }
-
-        startVadDetection()
-        startAsrMonitor()
+        
         startConversationMonitor()
-    }
-
-    private fun startCallTimer() {
-        timerJob?.cancel()
-        timerJob = serviceScope.launch {
-            while (true) {
-                delay(1000)
-                val elapsed = ((System.currentTimeMillis() - callStartTime) / 1000).toInt()
-                _uiState.update { it.copy(callDurationSeconds = elapsed) }
-            }
+        startCallTimer()
+        
+        serviceScope.launch {
+            voiceManager?.startCall()
         }
+        
+        Log.d(TAG, "来电已接听")
     }
-
-    private fun addDialogueLine(line: DialogueLine) {
-        dialogueLines.add(line)
-        _uiState.update { it.copy(dialogue = dialogueLines.toList()) }
-    }
-
-    // ==================== VAD 检测 ====================
-
+    
     /**
-     * VAD 持续运行在所有通话状态下:
-     * - Listening: 检测到话→直接 processNextTurn
-     * - Speaking/Processing: 检测到话→塞进 pendingQueue 排队
-     *
-     * 非流式 ASR (MiMo/SiliconFlow) 必须 stop() 才会 POST 转写返回文字,
-     * 所以检测到音量活动后要 stop→拿 transcript→restart 循环.
+     * 拒绝来电
      */
-    private fun startVadDetection() {
-        vadJob?.cancel()
-        vadJob = serviceScope.launch {
-            var lastAmplitudeTime = System.currentTimeMillis()
-            var hadVoiceActivity = false
-            var voiceSilenceStart = 0L
-            val voiceSilenceThresholdMs = 800L
-
-            // 确保 ASR 在跑
-            restartAsr()
-
-            while (true) {
-                delay(100)
-                if (isMuted) continue
-
-                val currentStatus = _uiState.value.status
-                if (currentStatus != VoiceCallStatus.Listening &&
-                    currentStatus != VoiceCallStatus.Speaking &&
-                    currentStatus != VoiceCallStatus.Processing) continue
-
-                val amplitudes = _uiState.value.amplitudes
-                val recentAmplitude = amplitudes.takeLast(3).average().toFloat()
-
-                // Speaking/Processing 状态下提高门槛过滤 TTS 回声
-                // pai-voice 的 speakingGain = 3.3 倍
-                val isSpeakingOrProcessing = currentStatus == VoiceCallStatus.Speaking ||
-                    currentStatus == VoiceCallStatus.Processing
-                val voiceThreshold = if (isSpeakingOrProcessing) 0.08f else 0.05f
-
-                // 检测到声音活动
-                if (recentAmplitude > voiceThreshold) {
-                    lastAmplitudeTime = System.currentTimeMillis()
-                    hadVoiceActivity = true
-                    voiceSilenceStart = 0L
+    fun rejectCall() {
+        endCall()
+        Log.d(TAG, "来电已拒绝")
+    }
+    
+    /**
+     * 切换静音
+     */
+    fun toggleMute() {
+        isMuted = !isMuted
+        voiceManager?.mute(isMuted)
+        _uiState.update { it.copy(isMuted = isMuted) }
+        Log.d(TAG, "静音状态: $isMuted")
+    }
+    
+    /**
+     * 切换视频模式
+     */
+    fun toggleVideoMode() {
+        val current = _uiState.value.videoMode
+        val next = when (current) {
+            VideoMode.None -> VideoMode.Camera
+            VideoMode.Camera -> VideoMode.Screen
+            VideoMode.Screen -> VideoMode.None
+        }
+        
+        _uiState.update { it.copy(videoMode = next) }
+        
+        if (next == VideoMode.None) {
+            cameraJob?.cancel()
+            cameraJob = null
+        } else if (cameraJob == null) {
+            startCameraCapture()
+        }
+        
+        Log.d(TAG, "视频模式切换: $current -> $next")
+    }
+    
+    // ========== 初始化模块 ==========
+    
+    private fun initVoiceManager() {
+        voiceManager = VoiceCallManager(
+            context = this,
+            scope = serviceScope,
+            onUserSpeech = { text ->
+                serviceScope.launch {
+                    handleUserSpeech(text)
                 }
-
-                // 有过声音活动 + 现在安静了 → stop ASR 触发转写
-                if (hadVoiceActivity && recentAmplitude <= voiceThreshold) {
-                    if (voiceSilenceStart == 0L) voiceSilenceStart = System.currentTimeMillis()
-                    if (System.currentTimeMillis() - voiceSilenceStart >= voiceSilenceThresholdMs) {
-                        hadVoiceActivity = false
-                        voiceSilenceStart = 0L
-
-                        // stop ASR → 触发非流式转写
-                        try { asr.stop() } catch (_: Exception) {}
-                        delay(300) // 等 ASR 返回转写结果
-
-                        // 读取转写结果
-                        val transcript = _uiState.value.userTranscript.trim()
-                        if (transcript.isNotBlank()) {
-                            onUserSpeechEnd(transcript)
-                        }
-
-                        // 清空转写 + 重启 ASR 继续监听
-                        _uiState.update { it.copy(userTranscript = "") }
-                        delay(100)
-                        restartAsr()
-                        continue
-                    }
-                } else if (recentAmplitude > voiceThreshold) {
-                    voiceSilenceStart = 0L
+            },
+            onStatusChange = { state ->
+                _uiState.update {
+                    it.copy(
+                        status = when {
+                            state.isThinking -> VoiceCallStatus.Thinking
+                            state.isSpeaking -> VoiceCallStatus.Speaking
+                            state.isListening -> VoiceCallStatus.Listening
+                            else -> it.status
+                        },
+                        amplitude = state.amplitude,
+                        isMuted = state.isMuted
+                    )
                 }
+            }
+        )
+        
+        // 配置API Keys
+        val prefs = getSharedPreferences("voice_config", MODE_PRIVATE)
+        voiceManager?.configure(
+            qwenKey = prefs.getString("qwen_key", "") ?: "",
+            elevenKey = prefs.getString("eleven_key", "") ?: "",
+            voiceId = prefs.getString("eleven_voice", "") ?: ""
+        )
+    }
+    
+    private fun initVisionChain() {
+        visionChain = VisionChain(
+            context = this,
+            scope = serviceScope
+        )
+        
+        startCameraCapture()
+    }
+    
+    // ========== 用户输入处理 ==========
+    
+    private suspend fun handleUserSpeech(text: String) {
+        if (text.isBlank()) return
+        
+        // 添加到对话记录
+        val dialogue = DialogueLine(
+            speaker = "user",
+            text = text,
+            timestamp = System.currentTimeMillis()
+        )
+        dialogueLines.add(dialogue)
+        updateDialogueUI()
+        
+        val currentStatus = _uiState.value.status
+        
+        when (currentStatus) {
+            VoiceCallStatus.Speaking, VoiceCallStatus.Thinking -> {
+                // AI正在说话或思考，排队
+                pendingQueue.offer(text)
+                Log.d(TAG, "用户输入排队: $text")
+            }
+            else -> {
+                // 立即处理
+                processUserInput(text)
             }
         }
     }
-
-    // ==================== 核心: 用户说完话 ====================
-
-    private fun onUserSpeechEnd(transcript: String) {
-        vadJob?.cancel()
-        val text = transcript.trim()
-        if (text.isBlank()) {
-            enterListeningState()
-            return
-        }
-
-        val status = _uiState.value.status
-        if (status == VoiceCallStatus.Speaking || status == VoiceCallStatus.Processing) {
-            // Mode B: AI正在说话或思考, 排队等候
-            pendingQueue.add(text)
-            _uiState.update { it.copy(queuedMessages = pendingQueue.size, userTranscript = "") }
-            restartAsr()
-            startVadDetection()
-        } else {
-            processNextTurn(text)
-        }
-    }
-
-    // ==================== 核心: 处理一轮对话 ====================
-
-    private fun processNextTurn(text: String) {
+    
+    private suspend fun processUserInput(text: String) {
         generation++
-        addDialogueLine(DialogueLine("user", text))
-
-        // Mode B: ASR保持运行，不stop，用户说的新话进排队
-
-        _uiState.update {
-            it.copy(
-                status = VoiceCallStatus.Processing,
-                userTranscript = "", assistantText = ""
-            )
-        }
-        ttsSentLength = 0
-        lastAssistantText = ""
-
-        try {
-            chatService.sendMessage(conversationId, listOf(UIMessagePart.Text(text)))
-        } catch (e: Exception) {
-            Log.e(TAG, "发送消息失败", e)
-            _uiState.update { it.copy(status = VoiceCallStatus.Error, errorMessage = "发送失败: ${e.message}") }
-        }
+        
+        // 发送给ChatService
+        chatService.sendMessage(
+            conversationId = conversationId,
+            role = MessageRole.User,
+            text = text
+        )
+        
+        // 设置思考状态
+        voiceManager?.setThinking(true)
+        
+        Log.d(TAG, "处理用户输入 (generation=$generation): $text")
     }
-
-    // ==================== 独白检测 ====================
-
-    private fun isMonologue(text: String): Boolean {
-        val t = text.trim()
-        if (t.startsWith("[独白]") || t.startsWith("【独白】")) return true
-        val patterns = listOf("继续听", "不出声", "继续等", "没问我", "不说话")
-        if (patterns.any { t.contains(it) } && t.length < 30) return true
-        return false
-    }
-
-    private fun stripMonologuePrefix(text: String): String {
-        return text.trim().removePrefix("[独白]").removePrefix("【独白】").trim()
-    }
-
-    // ==================== 对话流监听 ====================
-
+    
+    // ========== 对话监控 ==========
+    
     private fun startConversationMonitor() {
         conversationMonitorJob?.cancel()
         conversationMonitorJob = serviceScope.launch {
             conversation.collect { conv ->
-                val status = _uiState.value.status
-                if (status != VoiceCallStatus.Processing && status != VoiceCallStatus.Speaking) return@collect
-
-                val lastMessage = conv.currentMessages.lastOrNull()
-                if (lastMessage?.role != MessageRole.ASSISTANT) return@collect
-
-                val currentText = lastMessage.toText()
-                _uiState.update { it.copy(assistantText = currentText) }
-
-                val mono = isMonologue(currentText)
-
-                // 非独白内容: 流式TTS
-                if (!mono && currentText.length > ttsSentLength) {
-                    val newText = currentText.substring(ttsSentLength)
-                    val sentences = extractCompleteSentences(newText)
-                    for (s in sentences) {
-                        if (s.isNotBlank()) tts.enqueueText(s)
-                    }
-                    ttsSentLength = currentText.length - getPendingRemainder(newText).length
-                }
-
-                // AI开始输出非独白内容 -> Speaking
-                if (status == VoiceCallStatus.Processing && currentText.isNotBlank() && !mono) {
-                    _uiState.update { it.copy(status = VoiceCallStatus.Speaking) }
-                }
-
-                lastAssistantText = currentText
-            }
-        }
-
-        speakingMonitorJob?.cancel()
-        speakingMonitorJob = serviceScope.launch {
-            chatService.generationDoneFlow.collect { convId ->
-                if (convId != conversationId) return@collect
-                onGenerationDone()
+                val messages = conv.messages
+                if (messages.isEmpty()) return@collect
+                
+                val lastMessage = messages.last()
+                
+                // 只处理助手消息
+                if (lastMessage.role != MessageRole.Assistant) return@collect
+                
+                // 提取文本内容
+                val text = lastMessage.content.filterIsInstance<me.rerere.ai.ui.UIMessagePart.Text>()
+                    .joinToString("") { it.text }
+                
+                if (text.isBlank()) return@collect
+                
+                // 检查是否已经处理过
+                if (text == lastAssistantText) return@collect
+                lastAssistantText = text
+                
+                // 处理助手回复
+                handleAssistantResponse(text)
             }
         }
     }
-
-    private suspend fun onGenerationDone() {
-        val finalText = _uiState.value.assistantText
-        val mono = isMonologue(finalText)
-        val displayText = stripMonologuePrefix(finalText)
-
-        if (displayText.isNotBlank()) {
-            addDialogueLine(DialogueLine("assistant", displayText, isMonologue = mono))
-        }
-        // 清空实时显示，防止跟dialogueLines重复
-        _uiState.update { it.copy(assistantText = "") }
-
-        if (!mono) {
-            if (finalText.length > ttsSentLength) {
-                val remaining = finalText.substring(ttsSentLength)
-                if (remaining.isNotBlank()) {
-                    tts.enqueueText(remaining)
-                    ttsSentLength = finalText.length
-                }
-            }
-            _uiState.update { it.copy(status = VoiceCallStatus.Speaking) }
-            waitForTtsToFinish()
-        }
-
-        checkQueue()
-    }
-
-    // ==================== 队列检查 ====================
-
-    private fun checkQueue() {
-        val next = pendingQueue.poll()
-        if (next != null) {
-            _uiState.update { it.copy(queuedMessages = pendingQueue.size) }
-            processNextTurn(next)
+    
+    private suspend fun handleAssistantResponse(fullText: String) {
+        // 只处理新增的部分
+        val newText = if (ttsSentLength < fullText.length) {
+            fullText.substring(ttsSentLength)
         } else {
-            enterListeningState()
+            return
         }
-    }
-
-    // ==================== 状态切换 ====================
-
-    private fun enterListeningState() {
-        tts.stop()
-        ttsSentLength = 0
-        lastAssistantText = ""
-
-        _uiState.update {
-            it.copy(
-                status = VoiceCallStatus.Listening,
-                userTranscript = "", errorMessage = null,
-                queuedMessages = pendingQueue.size
+        
+        ttsSentLength = fullText.length
+        
+        // 分句处理
+        val sentences = newText.split(Regex("[。！？\n]+")).filter { it.isNotBlank() }
+        
+        for (sentence in sentences) {
+            val trimmed = sentence.trim()
+            if (trimmed.isEmpty()) continue
+            
+            // 检查是否是独白（不播放TTS）
+            val isMonologue = trimmed.startsWith("[独白]") || trimmed.startsWith("[") && trimmed.contains("独白")
+            
+            val displayText = trimmed.removePrefix("[独白]").trim()
+            
+            // 添加到对话记录
+            val dialogue = DialogueLine(
+                speaker = "assistant",
+                text = displayText,
+                timestamp = System.currentTimeMillis()
             )
+            dialogueLines.add(dialogue)
+            updateDialogueUI()
+            
+            // 播放TTS（独白除外）
+            if (!isMonologue) {
+                voiceManager?.setThinking(false)
+                voiceManager?.speak(displayText, generation)
+            }
         }
-
-        restartAsr()
-        startVadDetection()
-    }
-
-    private fun restartAsr() {
-        if (!isMuted) {
-            runCatching {
-                asr.start { transcript -> _uiState.update { it.copy(userTranscript = transcript) } }
-            }.onFailure { Log.e(TAG, it.toString(), it) }
+        
+        // 检查是否有排队的用户输入
+        if (_uiState.value.status == VoiceCallStatus.Listening) {
+            val pending = pendingQueue.poll()
+            if (pending != null) {
+                Log.d(TAG, "处理排队的用户输入: $pending")
+                processUserInput(pending)
+            }
         }
     }
-
-    // ==================== ASR 状态监听 (非流式ASR) ====================
-
-    private fun startAsrMonitor() {
-        asrMonitorJob?.cancel()
-        asrMonitorJob = serviceScope.launch {
-            var wasRecording = false
-            asr.state.collect { asrState ->
-                val isRecording = asrState.isRecording
-                if (wasRecording && !isRecording && !isMuted && _uiState.value.status == VoiceCallStatus.Listening) {
-                    val transcript = asrState.transcript.trim()
-                    if (transcript.isNotEmpty()) {
-                        onUserSpeechEnd(transcript)
-                    } else {
-                        restartAsr()
+    
+    private fun updateDialogueUI() {
+        _uiState.update { it.copy(dialogueLines = dialogueLines.toList()) }
+    }
+    
+    // ========== 视频陪伴模式 ==========
+    
+    private fun startCameraCapture() {
+        if (_uiState.value.videoMode == VideoMode.None) return
+        
+        cameraJob?.cancel()
+        cameraJob = serviceScope.launch {
+            while (isActive) {
+                try {
+                    val jpeg = captureCurrentFrame()
+                    if (jpeg != null) {
+                        // 检测画面是否变化
+                        if (visionChain?.changed(jpeg) == true) {
+                            // 陪伴模式评估
+                            val assessment = visionChain?.assess(jpeg)
+                            if (assessment != null) {
+                                val notification = visionChain?.companionStateMachine(assessment)
+                                if (notification != null) {
+                                    // 注入系统消息
+                                    injectSystemMessage(notification)
+                                }
+                            }
+                        }
                     }
+                } catch (e: Exception) {
+                    Log.e(TAG, "摄像头采集失败", e)
                 }
-                wasRecording = isRecording
+                
+                delay(3000) // 3秒一帧
             }
         }
     }
-
-    // ==================== TTS 等待 ====================
-
-    private suspend fun waitForTtsToFinish() {
-        var waitStart = System.currentTimeMillis()
-        while (!tts.isSpeaking.value && System.currentTimeMillis() - waitStart < 5000) {
-            delay(100)
-        }
-        val idleTimeoutMs = 5_000L
-        val hardDeadlineMs = 300_000L
-        val startTime = System.currentTimeMillis()
-        var lastActiveTime = System.currentTimeMillis()
-        while (true) {
-            val now = System.currentTimeMillis()
-            val status = tts.playbackState.value.status
-            val active = tts.isSpeaking.value ||
-                status == me.rerere.tts.model.PlaybackStatus.Playing ||
-                status == me.rerere.tts.model.PlaybackStatus.Buffering
-            if (active) lastActiveTime = now
-            if (!active && now - lastActiveTime >= idleTimeoutMs) break
-            if (now - startTime > hardDeadlineMs) {
-                tts.stop()
-                break
-            }
-            delay(300)
-        }
-        delay(300)
+    
+    private fun captureCurrentFrame(): ByteArray? {
+        // TODO: 实现摄像头采集
+        // 复用现有的摄像头代码或用 CameraX
+        return null
     }
-
-    // ==================== 文本工具 ====================
-
-    private fun extractCompleteSentences(text: String): List<String> {
-        val result = mutableListOf<String>()
-        val current = StringBuilder()
-        for (char in text) {
-            current.append(char)
-            if (char == '。' || char == '？' || char == '！' || char == '.' ||
-                char == '?' || char == '!' || char == '\n'
-            ) {
-                val sentence = current.toString().trim()
-                if (sentence.isNotEmpty()) result.add(sentence)
-                current.clear()
+    
+    private suspend fun injectSystemMessage(text: String) {
+        // 系统消息注入上下文，不触发AI回复
+        val dialogue = DialogueLine(
+            speaker = "system",
+            text = text,
+            timestamp = System.currentTimeMillis()
+        )
+        dialogueLines.add(dialogue)
+        updateDialogueUI()
+        
+        Log.d(TAG, "系统消息: $text")
+    }
+    
+    // ========== 来电监控 ==========
+    
+    private fun startCallingMonitor() {
+        callingMonitorJob?.cancel()
+        callingMonitorJob = serviceScope.launch {
+            delay(8000) // 8秒超时
+            
+            if (_uiState.value.status == VoiceCallStatus.Calling) {
+                Log.d(TAG, "来电超时，自动挂断")
+                endCall()
             }
         }
-        return result
     }
-
-    private fun getPendingRemainder(text: String): String {
-        val lastEnd = text.lastIndexOfAny(charArrayOf('。', '？', '！', '.', '?', '!', '\n'))
-        return if (lastEnd >= 0 && lastEnd < text.length - 1) text.substring(lastEnd + 1)
-        else if (lastEnd < 0) text
-        else ""
-    }
-
-    // ==================== 控制方法 ====================
-
-    fun toggleMute() {
-        isMuted = !isMuted
-        _uiState.update { it.copy(isMuted = isMuted) }
-        try {
-            if (isMuted) asr.stop()
-            else restartAsr()
-        } catch (e: Exception) {
-            _uiState.update { it.copy(errorMessage = "麦克风切换失败: ${e.message}") }
-        }
-    }
-
-    /**
-     * 切换摄像头开关
-     * Off -> Live -> Off 循环
-     */
-    fun toggleVideo() {
-        val current = _uiState.value.videoMode
-        val next = if (current == VideoMode.Off) VideoMode.Live else VideoMode.Off
-        _uiState.update { it.copy(videoMode = next) }
-        if (next == VideoMode.Off) {
-            addDialogueLine(DialogueLine("system", "摄像头已关闭"))
-        } else {
-            addDialogueLine(DialogueLine("system", "摄像头已开启 · 实时模式"))
-        }
-    }
-
-    /**
-     * 切换视频模式: Live <-> Companion
-     */
-    fun toggleVideoMode() {
-        val current = _uiState.value.videoMode
-        if (current == VideoMode.Off) return
-        val next = if (current == VideoMode.Live) VideoMode.Companion else VideoMode.Live
-        _uiState.update { it.copy(videoMode = next) }
-        val modeStr = if (next == VideoMode.Companion) "陪伴模式" else "实时模式"
-        addDialogueLine(DialogueLine("system", "已切换到$modeStr"))
-    }
-
-    /**
-     * 翻转前后摄像头
-     */
-    fun flipCamera() {
-        _uiState.update { it.copy(isFrontCamera = !it.isFrontCamera) }
-    }
-
-    fun endCall() {
-        val duration = _uiState.value.callDurationSeconds
-        val mins = duration / 60
-        val secs = duration % 60
-        val durationStr = if (mins > 0) "${mins}分${secs}秒" else "${secs}秒"
-
-        // 检测是否AI主动挂断
-        val isAiHangUp = pendingAiHangUp
-        pendingAiHangUp = false
-
-        if (isAiHangUp) {
-            addDialogueLine(DialogueLine("system", "对方已挂断"))
-        }
-
-        val endMsg = if (isAiHangUp) {
-            "[对方已挂断语音通话，通话时长${durationStr}]"
-        } else {
-            "[语音通话已结束，通话时长${durationStr}]"
-        }
-        try {
-            chatService.sendMessage(
-                conversationId,
-                listOf(UIMessagePart.Text(endMsg))
-            )
-        } catch (_: Exception) {}
-
-        vadJob?.cancel()
-        conversationMonitorJob?.cancel()
-        speakingMonitorJob?.cancel()
-        asrMonitorJob?.cancel()
+    
+    // ========== 通话计时 ==========
+    
+    private fun startCallTimer() {
         timerJob?.cancel()
-        try { asr.stop() } catch (_: Exception) {}
-        tts.stop()
-        pendingQueue.clear()
-        _uiState.update { it.copy(status = VoiceCallStatus.Idle) }
-        _activeConversationId.value = null
-        try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}
-    }
-
-    fun updateAmplitudes(amplitudes: List<Float>) {
-        _uiState.update { it.copy(amplitudes = amplitudes) }
-    }
-
-    // ==================== 通知 ====================
-
-    private fun buildNotification(state: VoiceCallUiState): android.app.Notification {
-        val mins = state.callDurationSeconds / 60
-        val secs = state.callDurationSeconds % 60
-        val timer = String.format("%02d:%02d", mins, secs)
-        val statusStr = when (state.status) {
-            VoiceCallStatus.Calling -> "正在呼叫"
-            VoiceCallStatus.Listening -> "正在聆听"
-            VoiceCallStatus.Processing -> "思考中"
-            VoiceCallStatus.Speaking -> "说话中"
-            VoiceCallStatus.Error -> state.errorMessage ?: "出错"
-            VoiceCallStatus.Idle -> "通话中"
+        timerJob = serviceScope.launch {
+            while (isActive) {
+                val duration = (System.currentTimeMillis() - callStartTime) / 1000
+                _uiState.update { it.copy(callDuration = duration.toInt()) }
+                delay(1000)
+            }
         }
-        val contentText = if (state.isConnected) "$statusStr · $timer" else statusStr
-
-        val contentIntent = PendingIntent.getActivity(
-            this, conversationId.hashCode(),
-            Intent(this, RouteActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                putExtra("openVoiceCallConversationId", conversationId.toString())
-            },
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        val hangUpIntent = PendingIntent.getService(
-            this, 0,
-            Intent(this, VoiceCallService::class.java).apply { action = ACTION_HANG_UP },
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        return NotificationCompat.Builder(this, VOICE_CALL_NOTIFICATION_CHANNEL_ID)
-            .setContentTitle("语音通话 · $timer")
-            .setContentText(contentText)
-            .setSmallIcon(R.drawable.small_icon)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setContentIntent(contentIntent)
-            .addAction(0, "挂断", hangUpIntent)
-            .setCategory(NotificationCompat.CATEGORY_CALL)
-            .build()
     }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        try { endCall() } catch (_: Exception) {}
-        serviceScope.cancel()
+    
+    // ========== 前台服务通知 ==========
+    
+    private fun startForeground() {
+        val intent = Intent(this, RouteActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            intent,
+            PendingIntent.FLAG_IMMUTABLE
+        )
+        
+        val notification = NotificationCompat.Builder(this, VOICE_CALL_NOTIFICATION_CHANNEL_ID)
+            .setContentTitle("Elian 通话中")
+            .setContentText("点击返回通话界面")
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
+            .build()
+        
+        ServiceCompat.startForeground(
+            this,
+            1,
+            notification,
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or 
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+        )
     }
 }
