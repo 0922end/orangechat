@@ -14,6 +14,7 @@ import androidx.core.app.ServiceCompat
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import me.rerere.ai.core.MessageRole
+import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.RouteActivity
 import me.rerere.rikkahub.VOICE_CALL_NOTIFICATION_CHANNEL_ID
