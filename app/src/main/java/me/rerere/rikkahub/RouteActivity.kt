@@ -1024,6 +1024,9 @@ sealed interface Screen : NavKey {
     data object SettingSpeech : Screen
 
     @Serializable
+    data object SettingVision : Screen
+
+    @Serializable
     data object SettingMcp : Screen
 
     @Serializable
