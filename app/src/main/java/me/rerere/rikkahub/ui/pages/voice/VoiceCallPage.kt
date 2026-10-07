@@ -84,7 +84,10 @@ fun VoiceCallPage(conversationId: Uuid, onBack: () -> Unit) {
     DisposableEffect(conversationId) {
         if (VoiceCallService.activeConversationId.value != conversationId.toString()) {
             if (asrPermission.allRequiredPermissionsGranted) {
-                VoiceCallService.start(context, conversationId.toString())
+                val intent = Intent(context, VoiceCallService::class.java).apply {
+                    putExtra("conversationId", conversationId.toString())
+                }
+                context.startService(intent)
             }
         }
         val intent = Intent(context, VoiceCallService::class.java)
@@ -93,7 +96,10 @@ fun VoiceCallPage(conversationId: Uuid, onBack: () -> Unit) {
     }
     LaunchedEffect(asrPermission.allRequiredPermissionsGranted) {
         if (asrPermission.allRequiredPermissionsGranted && VoiceCallService.activeConversationId.value == null) {
-            VoiceCallService.start(context, conversationId.toString())
+            val intent = Intent(context, VoiceCallService::class.java).apply {
+                putExtra("conversationId", conversationId.toString())
+            }
+            context.startService(intent)
         }
     }
     LaunchedEffect(Unit) { if (!asrPermission.allRequiredPermissionsGranted) asrPermission.requestPermissions() }
