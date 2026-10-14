@@ -410,6 +410,11 @@
         android:value="androidx.startup"
         tools:node="remove" />
     </provider>
+      <service
+      android:name=".xinchao.XinchaoService"
+      android:exported="false"
+      android:foregroundServiceType="dataSync" />
+
   </application>
 
 </manifest>

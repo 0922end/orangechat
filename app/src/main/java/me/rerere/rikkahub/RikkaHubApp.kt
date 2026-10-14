@@ -41,6 +41,8 @@ import me.rerere.rikkahub.data.service.DeviceEventTrackingService
 import me.rerere.rikkahub.data.service.ProactiveMessageService
 import me.rerere.rikkahub.data.service.SupabaseSyncService
 import me.rerere.rikkahub.service.ChatService
+import me.rerere.rikkahub.xinchao.XinchaoConfig
+import me.rerere.rikkahub.xinchao.XinchaoService
 import me.rerere.rikkahub.service.WebServerService
 import me.rerere.rikkahub.utils.CrashHandler
 import me.rerere.rikkahub.utils.DatabaseUtil
@@ -139,10 +141,25 @@ class RikkaHubApp : Application() {
         // Diary summary is now generated entirely by Supabase Edge Function.
         // App no longer schedules local diary summary alarms.
 
+        // Start Xinchao dynamic mind
+        startXinchaoIfEnabled()
+
         // Increment launch count
         incrementLaunchCount()
 
         // Composer.setDiagnosticStackTraceMode(ComposeStackTraceMode.Auto)
+    }
+
+    private fun startXinchaoIfEnabled() {
+        try {
+            XinchaoConfig.init(this)
+            if (XinchaoConfig.enabled) {
+                XinchaoService.start(this)
+                Log.i(TAG, "Xinchao service started")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start Xinchao", e)
+        }
     }
 
     private fun incrementLaunchCount() {
