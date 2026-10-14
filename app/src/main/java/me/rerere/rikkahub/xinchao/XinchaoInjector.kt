@@ -7,6 +7,7 @@ import org.json.JSONObject
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.uuid.Uuid
 
 object XinchaoInjector {
     private const val TAG = "XinchaoInjector"
@@ -15,6 +16,7 @@ object XinchaoInjector {
 
     // ChatService sets this callback to insert proactive messages
     var onSignalForChat: ((String) -> Unit)? = null
+    @Volatile var lastActiveConversationId: Uuid? = null
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
