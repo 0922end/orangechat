@@ -259,13 +259,10 @@ class ChatService(
         XinchaoInjector.onSignalForChat = { signalText ->
             val convId = XinchaoInjector.lastActiveConversationId
             if (convId != null) {
-                val msg = me.rerere.ai.ui.UIMessage(
-                    role = me.rerere.ai.core.MessageRole.SYSTEM,
-                    parts = listOf(me.rerere.ai.ui.UIMessagePart.Text(signalText))
-                )
-                addProactiveMessage(convId, msg)
+                triggerSystemReply(convId, signalText)
             }
         }
+
 
     }
 
@@ -587,6 +584,83 @@ class ChatService(
      * 不走工具调用循环 / 插件事件钩子 / 外置记忆库 / 标题建议生成,
      * 参考 generateTitle / generateSuggestion 的轻量调用方式.
      */
+
+    /**
+     * Universal system-level reply trigger.
+     * Any background service (Xinchao bridge, workflow, etc.) can call this
+     * to inject a system event and trigger AI to generate a reply.
+     * The systemText is shown as context to the AI, not displayed to user directly.
+     */
+    fun triggerSystemReply(conversationId: Uuid, systemText: String) {
+        appScope.launch(Dispatchers.IO) {
+            try {
+                val session = getOrCreateSession(conversationId)
+                session.getJob()?.let { job ->
+                    if (job.isActive) {
+                        Log.i(TAG, "triggerSystemReply: waiting for ongoing generation")
+                        job.join()
+                    }
+                }
+                val settings = settingsStore.settingsFlow.first()
+                val currentConversation = conversationRepo.getConversationById(conversationId)
+                    ?: getConversationFlow(conversationId).value
+                val assistant = settings.getAssistantById(currentConversation.assistantId)
+                    ?: settings.getCurrentAssistant()
+                val model = settings.findModelById(assistant.chatModelId ?: settings.chatModelId)
+                if (model == null) { Log.e(TAG, "triggerSystemReply: no model"); return@launch }
+                val provider = model.findProvider(settings.providers)
+                if (provider == null) { Log.e(TAG, "triggerSystemReply: no provider"); return@launch }
+                val providerHandler = providerManager.getProviderByType(provider)
+                val historyMessages = currentConversation.currentMessages.let {
+                    if (assistant.contextMessageSize > 0) it.takeLast(assistant.contextMessageSize) else it
+                }
+                val nodeCountBefore = currentConversation.messageNodes.size
+                val messages = buildList {
+                    if (assistant.systemPrompt.isNotEmpty()) {
+                        add(UIMessage(role = MessageRole.SYSTEM, parts = listOf(UIMessagePart.Text(assistant.systemPrompt))))
+                    }
+                    addAll(historyMessages)
+                    add(UIMessage.user(systemText))
+                }
+                val result = providerHandler.generateText(
+                    providerSetting = provider,
+                    messages = messages,
+                    params = TextGenerationParams(
+                        model = model,
+                        temperature = assistant.temperature ?: 0.8f,
+                        topP = assistant.topP,
+                        maxTokens = assistant.maxTokens,
+                        reasoningLevel = ReasoningLevel.OFF,
+                        customHeaders = buildList {
+                            addAll(assistant.customHeaders)
+                            addAll(model.customHeaders)
+                        },
+                        customBody = buildList {
+                            addAll(assistant.customBodies)
+                            addAll(model.customBodies)
+                        },
+                    ),
+                )
+                val replyText = result.choices[0].message?.toText()?.trim().orEmpty()
+                if (replyText.isBlank()) { Log.w(TAG, "triggerSystemReply: empty reply"); return@launch }
+                val latest = conversationRepo.getConversationById(conversationId)
+                    ?: getConversationFlow(conversationId).value
+                val userSentNew = latest.messageNodes.size > nodeCountBefore &&
+                    latest.messageNodes.subList(nodeCountBefore, latest.messageNodes.size)
+                        .any { node -> node.messages.any { it.role == MessageRole.USER } }
+                if (userSentNew) { Log.i(TAG, "triggerSystemReply: user sent new msg, skip"); return@launch }
+                val aiMessage = UIMessage(role = MessageRole.ASSISTANT, parts = listOf(UIMessagePart.Text(replyText)))
+                addProactiveMessage(conversationId, aiMessage)
+                if (!isForeground.value) {
+                    val senderName = if (assistant.useAssistantAvatar) assistant.name.ifEmpty { "AI" } else model.displayName
+                    sendGenerationDoneNotification(conversationId, senderName)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "triggerSystemReply failed", e)
+            }
+        }
+    }
+
     fun notifyVoiceCallDeclined(conversationId: Uuid) {
         appScope.launch(Dispatchers.IO) {
             try {
