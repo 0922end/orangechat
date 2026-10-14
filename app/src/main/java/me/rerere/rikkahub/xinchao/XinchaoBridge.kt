@@ -19,6 +19,7 @@ class XinchaoBridge(private val onSignal: (BridgeSignal) -> Unit) {
     data class BridgeSignal(val id: String, val eventId: String, val reason: String, val message: String, val createdAt: String)
 
     private val client = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(0, TimeUnit.MINUTES).writeTimeout(10, TimeUnit.SECONDS).build()
+    private val fetchClient = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var sseCall: Call? = null
     @Volatile private var running = false
@@ -69,18 +70,48 @@ class XinchaoBridge(private val onSignal: (BridgeSignal) -> Unit) {
     private fun processEvent(type: String, data: String) {
         try {
             val json = JSONObject(data)
-            if (type == "heartbeat" || json.optString("type") == "heartbeat") { Log.d(TAG, "SSE heartbeat"); return }
+            if (type == "connected") { Log.d(TAG, "SSE handshake OK"); return }
+            if (type != "delivery") { Log.d(TAG, "SSE event type=$type, skip"); return }
+            // SSE only pushes deliveryId, must GET full content
+            val deliveryId = json.optString("deliveryId", "")
+            if (deliveryId.isBlank()) { Log.w(TAG, "Empty deliveryId"); return }
+            Log.d(TAG, "Delivery notification: $deliveryId")
+            scope.launch { fetchAndProcess(deliveryId) }
+        } catch (e: Exception) { Log.w(TAG, "SSE parse failed: ${e.message}") }
+    }
+
+    private suspend fun fetchAndProcess(deliveryId: String) {
+        try {
+            // GET /bridge/v1/deliveries/:id to get full content
+            val url = "${XinchaoConfig.url(XinchaoConfig.PATH_BRIDGE_ACK)}/$deliveryId"
+            val request = Request.Builder().url(url)
+                .addHeader("Authorization", "Bearer ${XinchaoConfig.BRIDGE_TOKEN}")
+                .get().build()
+            val response = withContext(Dispatchers.IO) { fetchClient.newCall(request).execute() }
+            if (!response.isSuccessful) {
+                Log.w(TAG, "Fetch delivery $deliveryId failed: ${response.code}")
+                response.close()
+                return
+            }
+            val body = response.body?.string() ?: ""
+            response.close()
+            val json = JSONObject(body)
             val signal = BridgeSignal(
-                id = json.optString("id", ""), eventId = json.optString("eventId", json.optString("event_id", "")),
-                reason = json.optString("reason", ""), message = json.optString("message", ""),
+                id = deliveryId,
+                eventId = json.optString("eventId", json.optString("event_id", "")),
+                reason = json.optString("reason", ""),
+                message = json.optString("message", ""),
                 createdAt = json.optString("createdAt", json.optString("created_at", ""))
             )
             if (signal.message.isNotBlank()) {
                 Log.d(TAG, "Signal: [${signal.reason}] ${signal.message.take(60)}")
                 onSignal(signal)
-                if (signal.id.isNotBlank()) acknowledgeAsync(signal.id)
             }
-        } catch (e: Exception) { Log.w(TAG, "SSE parse failed: ${e.message}") }
+            // ACK
+            acknowledgeAsync(deliveryId)
+        } catch (e: Exception) {
+            Log.e(TAG, "fetchAndProcess $deliveryId failed: ${e.message}")
+        }
     }
 
     private fun acknowledgeAsync(deliveryId: String) {
