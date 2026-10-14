@@ -259,7 +259,12 @@ class ChatService(
         XinchaoInjector.onSignalForChat = { signalText ->
             val convId = XinchaoInjector.lastActiveConversationId
             if (convId != null) {
-                triggerSystemReply(convId, signalText)
+                val eventMsg = "[心潮信号] $signalText"
+                sendMessage(
+                    conversationId = convId,
+                    content = listOf(me.rerere.ai.ui.UIMessagePart.Text(eventMsg)),
+                    answer = true
+                )
             }
         }
 
