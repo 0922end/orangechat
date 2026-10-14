@@ -57,6 +57,7 @@ class XinchaoBridge(private val onSignal: (BridgeSignal) -> Unit) {
             while (running) {
                 val line = withContext(Dispatchers.IO) { reader.readLine() } ?: break
                 when {
+                    line.startsWith(":"  ) -> { /* SSE comment, e.g. ': heartbeat' - ignore */ }
                     line.startsWith("event:") -> eventType = line.removePrefix("event:").trim()
                     line.startsWith("data:") -> dataBuffer.append(line.removePrefix("data:").trim())
                     line.isBlank() && dataBuffer.isNotEmpty() -> {
@@ -70,19 +71,21 @@ class XinchaoBridge(private val onSignal: (BridgeSignal) -> Unit) {
     private fun processEvent(type: String, data: String) {
         try {
             val json = JSONObject(data)
-            if (type == "connected") { Log.d(TAG, "SSE handshake OK"); return }
-            if (type != "delivery") { Log.d(TAG, "SSE event type=$type, skip"); return }
-            // SSE only pushes deliveryId, must GET full content
-            val deliveryId = json.optString("deliveryId", "")
-            if (deliveryId.isBlank()) { Log.w(TAG, "Empty deliveryId"); return }
-            Log.d(TAG, "Delivery notification: $deliveryId")
-            scope.launch { fetchAndProcess(deliveryId) }
+            when (type) {
+                "connected" -> { Log.d(TAG, "SSE connected event received"); return }
+                "delivery" -> {
+                    val deliveryId = json.optString("deliveryId", "")
+                    if (deliveryId.isNotBlank()) {
+                        scope.launch { fetchAndProcessDelivery(deliveryId) }
+                    }
+                }
+                else -> Log.d(TAG, "SSE unknown event type: $type")
+            }
         } catch (e: Exception) { Log.w(TAG, "SSE parse failed: ${e.message}") }
     }
 
-    private suspend fun fetchAndProcess(deliveryId: String) {
+    private suspend fun fetchAndProcessDelivery(deliveryId: String) {
         try {
-            // GET /bridge/v1/deliveries/:id to get full content
             val url = "${XinchaoConfig.url(XinchaoConfig.PATH_BRIDGE_ACK)}/$deliveryId"
             val request = Request.Builder().url(url)
                 .addHeader("Authorization", "Bearer ${XinchaoConfig.BRIDGE_TOKEN}")
@@ -97,7 +100,7 @@ class XinchaoBridge(private val onSignal: (BridgeSignal) -> Unit) {
             response.close()
             val json = JSONObject(body)
             val signal = BridgeSignal(
-                id = deliveryId,
+                id = json.optString("id", deliveryId),
                 eventId = json.optString("eventId", json.optString("event_id", "")),
                 reason = json.optString("reason", ""),
                 message = json.optString("message", ""),
@@ -106,12 +109,9 @@ class XinchaoBridge(private val onSignal: (BridgeSignal) -> Unit) {
             if (signal.message.isNotBlank()) {
                 Log.d(TAG, "Signal: [${signal.reason}] ${signal.message.take(60)}")
                 onSignal(signal)
+                acknowledgeAsync(deliveryId)
             }
-            // ACK
-            acknowledgeAsync(deliveryId)
-        } catch (e: Exception) {
-            Log.e(TAG, "fetchAndProcess $deliveryId failed: ${e.message}")
-        }
+        } catch (e: Exception) { Log.w(TAG, "Fetch delivery failed: ${e.message}") }
     }
 
     private fun acknowledgeAsync(deliveryId: String) {
@@ -120,7 +120,7 @@ class XinchaoBridge(private val onSignal: (BridgeSignal) -> Unit) {
                 val url = "${XinchaoConfig.url(XinchaoConfig.PATH_BRIDGE_ACK)}/$deliveryId/ack"
                 val body = JSONObject().apply { put("status", "delivered") }.toString().toRequestBody(JSON_TYPE)
                 val request = Request.Builder().url(url).addHeader("Authorization", "Bearer ${XinchaoConfig.BRIDGE_TOKEN}").post(body).build()
-                client.newCall(request).execute().use { Log.d(TAG, "ACK $deliveryId -> ${it.code}") }
+                fetchClient.newCall(request).execute().use { Log.d(TAG, "ACK $deliveryId -> ${it.code}") }
             } catch (e: IOException) { Log.w(TAG, "ACK failed: ${e.message}") }
         }
     }
