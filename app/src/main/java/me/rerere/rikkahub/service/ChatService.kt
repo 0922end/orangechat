@@ -177,7 +177,7 @@ class ChatService(
 
     // 统一会话管理
     private val sessions = ConcurrentHashMap<Uuid, ConversationSession>()
-    internal val _sessionsVersion = MutableStateFlow(0L)
+    private val _sessionsVersion = MutableStateFlow(0L)
 
     // 错误状态
     private val _errors = MutableStateFlow<List<ChatError>>(emptyList())
@@ -256,22 +256,17 @@ class ChatService(
     init {
         // Register Xinchao signal listener
         XinchaoInjector.register()
-        // Register callback: bridge signals -> proactive chat messages
         XinchaoInjector.onSignalForChat = { signalText ->
-            try {
-                val sessions = this._sessions
-                val activeId = sessions.keys.firstOrNull()
-                if (activeId != null) {
-                    val msg = me.rerere.ai.ui.UIMessage(
-                        role = me.rerere.ai.core.MessageRole.SYSTEM,
-                        parts = listOf(me.rerere.ai.ui.UIMessagePart.Text(signalText))
-                    )
-                    addProactiveMessage(activeId, msg)
-                }
-            } catch (e: Exception) {
-                android.util.Log.w("ChatService", "Xinchao proactive signal failed", e)
+            val convId = XinchaoInjector.lastActiveConversationId
+            if (convId != null) {
+                val msg = me.rerere.ai.ui.UIMessage(
+                    role = me.rerere.ai.core.MessageRole.SYSTEM,
+                    parts = listOf(me.rerere.ai.ui.UIMessagePart.Text(signalText))
+                )
+                addProactiveMessage(convId, msg)
             }
         }
+
     }
 
     fun cleanup() = runCatching {
@@ -421,6 +416,9 @@ class ChatService(
     // ---- 发送消息 ----
 
     fun sendMessage(conversationId: Uuid, content: List<UIMessagePart>, answer: Boolean = true) {
+        // Track last active conversation for Xinchao signal injection
+        XinchaoInjector.lastActiveConversationId = conversationId
+
         if (content.isEmptyInputMessage()) return
 
         val session = getOrCreateSession(conversationId)

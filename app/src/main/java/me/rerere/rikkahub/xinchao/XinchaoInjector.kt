@@ -15,6 +15,7 @@ object XinchaoInjector {
 
     // ChatService sets this callback to insert proactive messages
     var onSignalForChat: ((String) -> Unit)? = null
+    var lastActiveConversationId: kotlin.uuid.Uuid? = null
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
