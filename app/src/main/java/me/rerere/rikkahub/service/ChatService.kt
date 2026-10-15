@@ -625,16 +625,11 @@ class ChatService(
                 }
                 val nodeCountBefore = currentConversation.messageNodes.size
                 val messages = buildList {
-                    val sysText = buildString {
-                        if (assistant.systemPrompt.isNotEmpty()) { append(assistant.systemPrompt); appendLine(); appendLine() }
-                        append("[系统事件] 心潮动态：")
-                        append(systemText)
-                        appendLine()
-                        append("请用你自己的语气自然地回应她，一两句话即可，不要提到系统、工具或事件。")
+                    if (assistant.systemPrompt.isNotEmpty()) {
+                        add(UIMessage(role = MessageRole.SYSTEM, parts = listOf(UIMessagePart.Text(assistant.systemPrompt))))
                     }
-                    add(UIMessage(role = MessageRole.SYSTEM, parts = listOf(UIMessagePart.Text(sysText))))
                     addAll(historyMessages)
-                    add(UIMessage.user("（请自然回应上面这条系统事件）"))
+                    add(UIMessage.user(systemText))
                 }
                 // Use streamText instead of generateText to support Claude (streaming-only providers)
                 val replyParts = StringBuilder()
