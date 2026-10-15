@@ -636,7 +636,7 @@ class ChatService(
                         temperature = assistant.temperature ?: 0.8f,
                         topP = assistant.topP,
                         maxTokens = assistant.maxTokens,
-                        reasoningLevel = ReasoningLevel.OFF,
+                        reasoningLevel = assistant.reasoningLevel,
                         customHeaders = buildList {
                             addAll(assistant.customHeaders)
                             addAll(model.customHeaders)
@@ -731,7 +731,7 @@ class ChatService(
                         temperature = assistant.temperature ?: 0.8f,
                         topP = assistant.topP,
                         maxTokens = assistant.maxTokens,
-                        reasoningLevel = ReasoningLevel.OFF,
+                        reasoningLevel = assistant.reasoningLevel,
                         customHeaders = buildList {
                             addAll(assistant.customHeaders)
                             addAll(model.customHeaders)
