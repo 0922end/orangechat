@@ -60,7 +60,6 @@ import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.canResumeToolExecution
 import me.rerere.ai.ui.finishPendingTools
 import me.rerere.ai.ui.finishReasoning
-import me.rerere.ai.ui.handleMessageChunk
 import me.rerere.ai.ui.isEmptyInputMessage
 import me.rerere.common.android.Logging
 import me.rerere.rikkahub.AppScope
@@ -260,15 +259,10 @@ class ChatService(
         XinchaoInjector.onSignalForChat = { signalText ->
             val convId = XinchaoInjector.lastActiveConversationId
             if (convId != null) {
-                // 不走 sendMessage：那会把信号伪装成“用户消息”写进聊天记录。
-                // 走 triggerSystemReply：信号只作为上下文发给模型，回复以 assistant 主动消息落库。
-                // 心潮提示语末尾那句“回应之后记得回传一次…”会诱导模型去调工具，而这条路径没有工具，
-                // 它就只好把调用格式当正文吐出来 —— 先裁掉，避免又漏一串 DSML 到聊天里。
-                val hint = signalText.substringBefore("回应之后记得回传")
-                triggerSystemReply(convId, "[心潮信号] $hint")
-                true
+                triggerSystemReply(convId, "[心潮信号] $signalText")
+                true // handled, don't queue
             } else {
-                false
+                false // no active conversation, queue for next generation
             }
         }
 
@@ -395,9 +389,6 @@ class ChatService(
     // ---- 初始化对话 ----
 
     suspend fun initializeConversation(conversationId: Uuid) {
-        // 打开对话即记为“当前对话”：心潮主动消息优先投到这里，
-        // 而不是“最后发过消息的那个对话”（否则���跨窗口跑到别的会话里）。
-        XinchaoInjector.lastActiveConversationId = conversationId
         getOrCreateSession(conversationId) // 确保 session 存在
         // 总是从数据库重新加载最新数据，确保能显示主动消息等新内容
         val conversation = conversationRepo.getConversationById(conversationId)
@@ -628,21 +619,13 @@ class ChatService(
                 }
                 val nodeCountBefore = currentConversation.messageNodes.size
                 val messages = buildList {
-                    // truncate: strip tool listings —— 同 notifyVoiceCallDeclined。
-                    // systemPrompt 前面是人设、后面挂着工具列表，截断后就看不见工具，自然不会吐调用格式。
-                    val truncatedPrompt = assistant.systemPrompt.take(500)
-                    if (truncatedPrompt.isNotEmpty()) {
-                        add(UIMessage(role = MessageRole.SYSTEM, parts = listOf(UIMessagePart.Text(truncatedPrompt))))
+                    if (assistant.systemPrompt.isNotEmpty()) {
+                        add(UIMessage(role = MessageRole.SYSTEM, parts = listOf(UIMessagePart.Text(assistant.systemPrompt))))
                     }
                     addAll(historyMessages)
-                    add(UIMessage.user(
-                        "$systemText\n（用你自己的语气自然回应，简短即可，不要提\"系统事件\"\"工具\"等技术词汇，不要用引号、代码块或任何标记包裹。）"
-                    ))
+                    add(UIMessage.user(systemText))
                 }
-                // 流式 + handleMessageChunk：把 Claude 的 tool_use 解析成 Tool part，
-                // 而不是被非流式 toText() 序列化成 <||DSML||> 文本泄漏到聊天里。
-                var streamed = messages
-                providerHandler.streamText(
+                val result = providerHandler.generateText(
                     providerSetting = provider,
                     messages = messages,
                     params = TextGenerationParams(
@@ -660,16 +643,8 @@ class ChatService(
                             addAll(model.customBodies)
                         },
                     ),
-                ).collect { chunk ->
-                    streamed = streamed.handleMessageChunk(chunk = chunk, model = model)
-                }
-                val replyMessage = streamed.lastOrNull() ?: run {
-                    Log.w(TAG, "triggerSystemReply: empty stream"); return@launch
-                }
-                val replyText = sanitizeProactiveReply(
-                    replyMessage.parts.filterIsInstance<UIMessagePart.Text>()
-                        .joinToString("\n") { it.text }.trim()
                 )
+                val replyText = result.choices[0].message?.toText()?.trim().orEmpty()
                 if (replyText.isBlank()) { Log.w(TAG, "triggerSystemReply: empty reply"); return@launch }
                 val latest = conversationRepo.getConversationById(conversationId)
                     ?: getConversationFlow(conversationId).value
@@ -679,16 +654,6 @@ class ChatService(
                 if (userSentNew) { Log.i(TAG, "triggerSystemReply: user sent new msg, skip"); return@launch }
                 val aiMessage = UIMessage(role = MessageRole.ASSISTANT, parts = listOf(UIMessagePart.Text(replyText)))
                 addProactiveMessage(conversationId, aiMessage)
-                // 主动消息同样回传心潮：否则“他主动找过她”这件事心潮永远不知道。
-                // 用 force 跳过节流，免得刚跟她聊完就把这条吞了。
-                runCatching {
-                    XinchaoUplink.sendConversationEvent(
-                        userMessage = "",
-                        aiReply = replyText,
-                        sessionId = conversationId.toString(),
-                        force = true
-                    )
-                }.onFailure { Log.w(TAG, "Xinchao proactive event failed", it) }
                 if (!isForeground.value) {
                     val senderName = if (assistant.useAssistantAvatar) assistant.name.ifEmpty { "AI" } else model.displayName
                     sendGenerationDoneNotification(conversationId, senderName)
@@ -697,19 +662,6 @@ class ChatService(
                 Log.e(TAG, "triggerSystemReply failed", e)
             }
         }
-    }
-
-    /**
-     * 主动消息输出兜底：模型偶尔会吐工具调用/标记（如 <||DSML|| invoke name="send_message">…）。
-     * 优先把其中的 message 参数抠出来当正文，其次剥掉标签，避免原样显示到聊天里。
-     */
-    private fun sanitizeProactiveReply(raw: String): String {
-        if (raw.isBlank()) return raw
-        var t = raw
-        t = Regex("<\\|{2}DSML\\|{2}[\\s\\S]*?</\\|{2}DSML\\|{2}[^>]*>").replace(t, "")
-        t = Regex("</?\\|{1,2}[A-Za-z_][A-Za-z0-9_]*[^>]*\\|{1,2}>").replace(t, "")
-        // 剥完为空 = 只有工具调用、没有正文：返回空让调用方跳过，别把 DSML 原文显示出来
-        return t.trim()
     }
 
     fun notifyVoiceCallDeclined(conversationId: Uuid) {
@@ -755,10 +707,8 @@ class ChatService(
                 val eventDescription = "[系统事件] 你刚刚主动发起的语音通话邀请被用户直接挂断了（拒接，未接听）。请用你自己的语气自然地回应这件事，简短即可，不要提及\"系统事件\"\"工具\"等技术词汇，不要用引号或标注包裹，就当作正常聊天说一句话。"
 
                 val messages = buildList {
-                    // truncate: strip tool listings
-                    val truncatedPrompt = assistant.systemPrompt.take(500)
-                    if (truncatedPrompt.isNotEmpty()) {
-                        add(UIMessage(role = MessageRole.SYSTEM, parts = listOf(UIMessagePart.Text(truncatedPrompt))))
+                    if (assistant.systemPrompt.isNotEmpty()) {
+                        add(UIMessage(role = MessageRole.SYSTEM, parts = listOf(UIMessagePart.Text(assistant.systemPrompt))))
                     }
                     addAll(historyMessages)
                     add(UIMessage.user(eventDescription))
