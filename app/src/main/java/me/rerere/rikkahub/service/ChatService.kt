@@ -257,13 +257,16 @@ class ChatService(
     init {
         // Register Xinchao signal listener
         XinchaoInjector.register()
+        debugNotify("init: register ok")
         XinchaoInjector.onSignalForChat = { signalText ->
+            debugNotify("callback FIRED")
             val convId = XinchaoInjector.lastActiveConversationId
             if (convId != null) {
                 triggerSystemReply(convId, "[心潮信号] $signalText")
                 true // handled, don't queue
             } else {
-                false // no active conversation, queue for next generation
+                debugNotify("convId NULL")
+                false
             }
         }
 
@@ -673,7 +676,7 @@ class ChatService(
                 // Surface the error as a notification so we can debug without logcat
                 try {
                     val errMsg = "triggerSystemReply error: ${e.javaClass.simpleName}: ${e.message?.take(200)}"
-                    val notification = android.app.Notification.Builder(context, "system")
+                    val notification = android.app.Notification.Builder(context, "xinchao_heartbeat")
                         .setSmallIcon(android.R.drawable.ic_dialog_alert)
                         .setContentTitle("Xinchao Debug")
                         .setContentText(errMsg)
@@ -689,7 +692,7 @@ class ChatService(
 
     private fun debugNotify(msg: String) {
         try {
-            val notification = android.app.Notification.Builder(context, "system")
+            val notification = android.app.Notification.Builder(context, "xinchao_heartbeat")
                 .setSmallIcon(android.R.drawable.ic_dialog_alert)
                 .setContentTitle("Xinchao Debug")
                 .setContentText(msg)
