@@ -14,8 +14,8 @@ object XinchaoInjector {
     private val pendingSignals = ConcurrentLinkedQueue<XinchaoBridge.BridgeSignal>()
     @Volatile private var registered = false
 
-    // ChatService sets this callback to insert proactive messages.
-    // 返回 true 表示已就绪、能立刻处理这条信号；false 表示当前没有活跃对话，交给队列等下次。
+    // ChatService sets this callback to trigger proactive reply.
+    // Returns true if signal was handled (don't queue), false to queue for next generation.
     var onSignalForChat: ((String) -> Boolean)? = null
     @Volatile var lastActiveConversationId: Uuid? = null
 
@@ -28,22 +28,23 @@ object XinchaoInjector {
         if (registered) return
         registered = true
         XinchaoService.signalListeners.add { signal ->
-            // 单路径处理，避免同一条信号被消费两次：
-            //  - 有活跃对话 → 走主动回复（triggerSystemReply），不再进队列
-            //  - 没有活跃对话 / 触发失败 → 入队，等她下一次说话时注入上下文
+            Log.d(TAG, "Signal received: [${signal.reason}] ${signal.message.take(40)}")
+            // Single-path: try callback first, only queue if callback didn't handle it
             val callback = onSignalForChat
-            var handled = false
-            if (callback != null && signal.message.isNotBlank()) {
+            val handled = if (callback != null && signal.message.isNotBlank()) {
                 try {
-                    handled = callback(signal.message)
-                    if (handled) Log.d(TAG, "Signal pushed to chat: [${signal.reason}] ${signal.message.take(40)}")
+                    callback(signal.message)
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to push signal to chat: ${e.message}")
+                    false
                 }
-            }
-            if (!handled) {
+            } else false
+
+            if (handled) {
+                Log.d(TAG, "Signal handled by triggerSystemReply, not queuing")
+            } else {
                 pendingSignals.offer(signal)
-                Log.d(TAG, "Signal queued for next turn: [${signal.reason}] ${signal.message.take(40)}")
+                Log.d(TAG, "Signal queued for next generation")
             }
         }
         Log.d(TAG, "Registered as signal listener")
@@ -54,29 +55,6 @@ object XinchaoInjector {
      * Contains drives, emotion, dreams, handoff notes.
      * Called synchronously before each AI generation.
      */
-    @Volatile private var cachedContext: String = ""
-    @Volatile private var lastContextRefreshMs: Long = 0L
-    private const val CONTEXT_TTL_MS = 60_000L
-    private val contextExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
-
-    /**
-     * 后台刷新 now block 到缓存；比 TTL 新鲜时不重复请求。
-     * 生成前只读缓存，绝不阻塞在网络上。
-     */
-    fun refreshContextAsync() {
-        if (!XinchaoConfig.enabled) return
-        val now = System.currentTimeMillis()
-        if (now - lastContextRefreshMs < CONTEXT_TTL_MS) return
-        lastContextRefreshMs = now
-        try {
-            contextExecutor.execute {
-                val ctx = fetchContext()
-                if (ctx.isNotBlank()) cachedContext = ctx
-            }
-        } catch (e: Exception) { Log.w(TAG, "refreshContextAsync failed: ${e.message}") }
-    }
-
-    /** 同步拉取（显式调用时用；常规路径请用 refreshContextAsync + cachedContext）。 */
     fun fetchContext(): String {
         if (!XinchaoConfig.enabled) return ""
         try {
@@ -112,9 +90,8 @@ object XinchaoInjector {
      */
     fun consumePendingSignals(): String {
         val sb = StringBuilder()
-        // 1. now block：后台刷新，读缓存，不阻塞本轮生成
-        refreshContextAsync()
-        val context = cachedContext
+        // 1. Fetch the "now block" from xinchao
+        val context = fetchContext()
         if (context.isNotBlank()) {
             sb.append("\n").append(context).append("\n")
         }
