@@ -260,7 +260,8 @@ class ChatService(
         XinchaoInjector.onSignalForChat = { signalText ->
             val convId = XinchaoInjector.lastActiveConversationId
             if (convId != null) {
-                triggerSystemReply(convId, "[心潮信号] $signalText")
+                triggerSystemReply(convId, "[心潮信号] $signalText
+(请直接用简短文字回复，不要调用任何工具)")
                 true // handled, don't queue
             } else {
                 false // no active conversation, queue for next generation
@@ -669,6 +670,18 @@ class ChatService(
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "triggerSystemReply failed", e)
+                // Surface the error as a notification so we can debug without logcat
+                try {
+                    val errMsg = "triggerSystemReply error: ${e.javaClass.simpleName}: ${e.message?.take(200)}"
+                    val notification = android.app.Notification.Builder(context, "system")
+                        .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                        .setContentTitle("Xinchao Debug")
+                        .setContentText(errMsg)
+                        .setStyle(android.app.Notification.BigTextStyle().bigText(errMsg))
+                        .build()
+                    val nm = context.getSystemService(android.app.NotificationManager::class.java)
+                    nm?.notify(99999, notification)
+                } catch (_: Exception) {}
             }
         }
     }
