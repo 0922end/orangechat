@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -625,7 +626,9 @@ class ChatService(
                     addAll(historyMessages)
                     add(UIMessage.user(systemText))
                 }
-                val result = providerHandler.generateText(
+                // Use streamText instead of generateText to support Claude (streaming-only providers)
+                val replyParts = StringBuilder()
+                providerHandler.streamText(
                     providerSetting = provider,
                     messages = messages,
                     params = TextGenerationParams(
@@ -643,8 +646,14 @@ class ChatService(
                             addAll(model.customBodies)
                         },
                     ),
-                )
-                val replyText = result.choices[0].message?.toText()?.trim().orEmpty()
+                ).collect { chunk ->
+                    val delta = chunk.choices.firstOrNull()?.delta
+                    if (delta != null) {
+                        val text = delta.toText()
+                        if (text.isNotBlank()) replyParts.append(text)
+                    }
+                }
+                val replyText = replyParts.toString().trim()
                 if (replyText.isBlank()) { Log.w(TAG, "triggerSystemReply: empty reply"); return@launch }
                 val latest = conversationRepo.getConversationById(conversationId)
                     ?: getConversationFlow(conversationId).value
