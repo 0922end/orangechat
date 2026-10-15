@@ -35,7 +35,7 @@ object XinchaoUplink {
             if (userMessage.isNotBlank()) append("\u5979\u8BF4\uFF1A").append(userMessage.take(600))
             if (aiReply.isNotBlank()) {
                 if (isNotEmpty()) append(" ")
-                append("\u4ED6\u56DE\uFF1A").append(aiReply.take(600))
+                append("\u6211\u56DE\uFF1A").append(aiReply.take(600))
             }
         }
         val body = JSONObject().apply {

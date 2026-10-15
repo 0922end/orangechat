@@ -18,7 +18,9 @@ class XinchaoBridge(private val onSignal: (BridgeSignal) -> Unit) {
     }
     data class BridgeSignal(val id: String, val eventId: String, val reason: String, val message: String, val createdAt: String)
 
-    private val client = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(0, TimeUnit.MINUTES).writeTimeout(10, TimeUnit.SECONDS).build()
+    // readTimeout 不用 0（永不超时）：SSE 假死时不会重连。
+    // 设为 150 秒静默上限——服务端心跳正常时不会触发，真断了就抛 IOException 走重连。
+    private val client = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(150, TimeUnit.SECONDS).writeTimeout(10, TimeUnit.SECONDS).build()
     private val fetchClient = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var sseCall: Call? = null

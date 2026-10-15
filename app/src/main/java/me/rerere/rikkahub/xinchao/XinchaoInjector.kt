@@ -48,6 +48,29 @@ object XinchaoInjector {
      * Contains drives, emotion, dreams, handoff notes.
      * Called synchronously before each AI generation.
      */
+    @Volatile private var cachedContext: String = ""
+    @Volatile private var lastContextRefreshMs: Long = 0L
+    private const val CONTEXT_TTL_MS = 60_000L
+    private val contextExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+
+    /**
+     * 后台刷新 now block 到缓存；比 TTL 新鲜时不重复请求。
+     * 生成前只读缓存，绝不阻塞在网络上。
+     */
+    fun refreshContextAsync() {
+        if (!XinchaoConfig.enabled) return
+        val now = System.currentTimeMillis()
+        if (now - lastContextRefreshMs < CONTEXT_TTL_MS) return
+        lastContextRefreshMs = now
+        try {
+            contextExecutor.execute {
+                val ctx = fetchContext()
+                if (ctx.isNotBlank()) cachedContext = ctx
+            }
+        } catch (e: Exception) { Log.w(TAG, "refreshContextAsync failed: ${e.message}") }
+    }
+
+    /** 同步拉取（显式调用时用；常规路径请用 refreshContextAsync + cachedContext）。 */
     fun fetchContext(): String {
         if (!XinchaoConfig.enabled) return ""
         try {
@@ -83,8 +106,9 @@ object XinchaoInjector {
      */
     fun consumePendingSignals(): String {
         val sb = StringBuilder()
-        // 1. Fetch the "now block" from xinchao
-        val context = fetchContext()
+        // 1. now block：后台刷新，读缓存，不阻塞本轮生成
+        refreshContextAsync()
+        val context = cachedContext
         if (context.isNotBlank()) {
             sb.append("\n").append(context).append("\n")
         }
