@@ -669,6 +669,16 @@ class ChatService(
                 if (userSentNew) { Log.i(TAG, "triggerSystemReply: user sent new msg, skip"); return@launch }
                 val aiMessage = UIMessage(role = MessageRole.ASSISTANT, parts = listOf(UIMessagePart.Text(replyText)))
                 addProactiveMessage(conversationId, aiMessage)
+                // 主动消息同样回传心潮：否则“他主动找过她”这件事心潮永远不知道。
+                // 用 force 跳过节流，免得刚跟她聊完就把这条吞了。
+                runCatching {
+                    XinchaoUplink.sendConversationEvent(
+                        userMessage = "",
+                        aiReply = replyText,
+                        sessionId = conversationId.toString(),
+                        force = true
+                    )
+                }.onFailure { Log.w(TAG, "Xinchao proactive event failed", it) }
                 if (!isForeground.value) {
                     val senderName = if (assistant.useAssistantAvatar) assistant.name.ifEmpty { "AI" } else model.displayName
                     sendGenerationDoneNotification(conversationId, senderName)
