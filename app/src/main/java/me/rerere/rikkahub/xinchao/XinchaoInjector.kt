@@ -51,7 +51,8 @@ object XinchaoInjector {
     fun fetchContext(): String {
         if (!XinchaoConfig.enabled) return ""
         try {
-            val url = XinchaoConfig.url(XinchaoConfig.PATH_CONTEXT)
+            val sessionId = lastActiveConversationId?.toString() ?: "elian-default"
+            val url = XinchaoConfig.url(XinchaoConfig.PATH_CONTEXT) + "?session_id=$sessionId&mode=turn"
             val request = Request.Builder()
                 .url(url)
                 .addHeader("Authorization", "Bearer ${XinchaoConfig.CONVERSATION_TOKEN}")
