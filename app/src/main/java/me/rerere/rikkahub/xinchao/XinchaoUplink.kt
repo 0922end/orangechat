@@ -25,11 +25,12 @@ object XinchaoUplink {
         userMessage: String,
         aiReply: String,
         thinking: String = "",
-        sessionId: String? = null
+        sessionId: String? = null,
+        force: Boolean = false
     ) {
         if (!XinchaoConfig.enabled) return
         val now = System.currentTimeMillis()
-        if (now - lastEventMs < XinchaoConfig.CONVERSATION_THROTTLE_MS) return
+        if (!force && now - lastEventMs < XinchaoConfig.CONVERSATION_THROTTLE_MS) return
         lastEventMs = now
         val exchange = buildString {
             if (userMessage.isNotBlank()) append("\u5979\u8BF4\uFF1A").append(userMessage.take(600))
