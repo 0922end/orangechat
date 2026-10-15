@@ -25,24 +25,41 @@ object XinchaoUplink {
         userMessage: String,
         aiReply: String,
         thinking: String = "",
-        sessionId: String? = null,
-        force: Boolean = false
+        sessionId: String? = null
     ) {
         if (!XinchaoConfig.enabled) return
         val now = System.currentTimeMillis()
-        if (!force && now - lastEventMs < XinchaoConfig.CONVERSATION_THROTTLE_MS) return
+        if (now - lastEventMs < XinchaoConfig.CONVERSATION_THROTTLE_MS) return
         lastEventMs = now
         val exchange = buildString {
             if (userMessage.isNotBlank()) append("\u5979\u8BF4\uFF1A").append(userMessage.take(600))
             if (aiReply.isNotBlank()) {
                 if (isNotEmpty()) append(" ")
-                append("\u6211\u56DE\uFF1A").append(aiReply.take(600))
+                append("\u4ED6\u56DE\uFF1A").append(aiReply.take(600))
             }
         }
         val body = JSONObject().apply {
             put("event_id", "elian-conv-${UUID.randomUUID().toString().take(12)}")
             put("exchange", exchange)
             put("recent", userMessage.take(200))
+            if (!sessionId.isNullOrBlank()) put("session_id", sessionId)
+        }
+        postAsync(XinchaoConfig.url(XinchaoConfig.PATH_CONVERSATION_EVENT), XinchaoConfig.CONVERSATION_TOKEN, body)
+    }
+
+    fun sendProactiveEvent(signalText: String, aiReply: String, sessionId: String? = null) {
+        if (!XinchaoConfig.enabled) return
+        val exchange = buildString {
+            if (signalText.isNotBlank()) append("心潮信号：").append(signalText.take(600))
+            if (aiReply.isNotBlank()) {
+                if (isNotEmpty()) append(" ")
+                append("他回：").append(aiReply.take(600))
+            }
+        }
+        val body = JSONObject().apply {
+            put("event_id", "elian-proactive-${UUID.randomUUID().toString().take(12)}")
+            put("exchange", exchange)
+            put("recent", signalText.take(200))
             if (!sessionId.isNullOrBlank()) put("session_id", sessionId)
         }
         postAsync(XinchaoConfig.url(XinchaoConfig.PATH_CONVERSATION_EVENT), XinchaoConfig.CONVERSATION_TOKEN, body)
