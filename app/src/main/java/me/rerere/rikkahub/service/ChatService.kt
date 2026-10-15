@@ -262,6 +262,9 @@ class ChatService(
                 // 不走 sendMessage：那会把信号伪装成“用户消息”写进聊天记录。
                 // 走 triggerSystemReply：信号只作为上下文发给模型，回复以 assistant 主动消息落库。
                 triggerSystemReply(convId, "[心潮信号] $signalText")
+                true
+            } else {
+                false
             }
         }
 
