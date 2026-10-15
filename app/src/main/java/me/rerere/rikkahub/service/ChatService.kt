@@ -262,8 +262,13 @@ class ChatService(
             debugNotify("callback FIRED")
             val convId = XinchaoInjector.lastActiveConversationId
             if (convId != null) {
-                triggerSystemReply(convId, "$signalText")
-                true // handled, don't queue
+                debugNotify("sendMessage for conv=" + convId.toString().take(8))
+                sendMessage(
+                    conversationId = convId,
+                    content = listOf(me.rerere.ai.ui.UIMessagePart.Text(signalText)),
+                    answer = true
+                )
+                true
             } else {
                 debugNotify("convId NULL")
                 false
