@@ -391,6 +391,9 @@ class ChatService(
     // ---- 初始化对话 ----
 
     suspend fun initializeConversation(conversationId: Uuid) {
+        // 打开对话即记为“当前对话”：心潮主动消息优先投到这里，
+        // 而不是“最后发过消息的那个对话”（否则���跨窗口跑到别的会话里）。
+        XinchaoInjector.lastActiveConversationId = conversationId
         getOrCreateSession(conversationId) // 确保 session 存在
         // 总是从数据库重新加载最新数据，确保能显示主动消息等新内容
         val conversation = conversationRepo.getConversationById(conversationId)
@@ -624,6 +627,12 @@ class ChatService(
                     if (assistant.systemPrompt.isNotEmpty()) {
                         add(UIMessage(role = MessageRole.SYSTEM, parts = listOf(UIMessagePart.Text(assistant.systemPrompt))))
                     }
+                    // 后台主动消息：只要正文。明确禁止工具调用，否则模型会把
+                    // send_message 之类的调用格式当文本吐出来，泄漏进聊天记录。
+                    add(UIMessage(role = MessageRole.SYSTEM, parts = listOf(UIMessagePart.Text(
+                        "这是一次后台主动消息。只输出你要对她说的那段正文本身，" +
+                        "不要输出任何工具调用、函数调用、XML/DSML 标记、代码块或参数标签。"
+                    ))))
                     addAll(historyMessages)
                     add(UIMessage.user(systemText))
                 }
@@ -646,7 +655,7 @@ class ChatService(
                         },
                     ),
                 )
-                val replyText = result.choices[0].message?.toText()?.trim().orEmpty()
+                val replyText = sanitizeProactiveReply(result.choices[0].message?.toText()?.trim().orEmpty())
                 if (replyText.isBlank()) { Log.w(TAG, "triggerSystemReply: empty reply"); return@launch }
                 val latest = conversationRepo.getConversationById(conversationId)
                     ?: getConversationFlow(conversationId).value
@@ -664,6 +673,21 @@ class ChatService(
                 Log.e(TAG, "triggerSystemReply failed", e)
             }
         }
+    }
+
+    /**
+     * 主动消息输出兜底：模型偶尔会吐工具调用/标记（如 <||DSML|| invoke name="send_message">…）。
+     * 优先把其中的 message 参数抠出来当正文，其次剥掉标签，避免原样显示到聊天里。
+     */
+    private fun sanitizeProactiveReply(raw: String): String {
+        if (raw.isBlank()) return raw
+        val msgParam = Regex("<\\|{1,2}DSML\\|{1,2}\\s*parameter\\s+name=\"message\"[^>]*>([\\s\\S]*?)</\\|{1,2}DSML\\|{1,2}>")
+            .find(raw)?.groupValues?.get(1)?.trim()
+        if (!msgParam.isNullOrBlank()) return msgParam
+        var t = raw
+        t = Regex("<\\|{2}DSML\\|{2}[\\s\\S]*?</\\|{2}DSML\\|{2}[^>]*>").replace(t, "")
+        t = Regex("</?\\|{1,2}[A-Za-z_][A-Za-z0-9_]*[^>]*\\|{1,2}>").replace(t, "")
+        return t.trim().ifBlank { raw.trim() }
     }
 
     fun notifyVoiceCallDeclined(conversationId: Uuid) {
