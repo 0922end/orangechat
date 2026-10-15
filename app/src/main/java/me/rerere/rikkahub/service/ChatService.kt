@@ -627,18 +627,16 @@ class ChatService(
                 }
                 val nodeCountBefore = currentConversation.messageNodes.size
                 val messages = buildList {
-                    if (assistant.systemPrompt.isNotEmpty()) {
-                        add(UIMessage(role = MessageRole.SYSTEM, parts = listOf(UIMessagePart.Text(assistant.systemPrompt))))
+                    // truncate: strip tool listings —— 同 notifyVoiceCallDeclined。
+                    // systemPrompt 前面是人设、后面挂着工具列表，截断后就看不见工具，自然不会吐调用格式。
+                    val truncatedPrompt = assistant.systemPrompt.take(500)
+                    if (truncatedPrompt.isNotEmpty()) {
+                        add(UIMessage(role = MessageRole.SYSTEM, parts = listOf(UIMessagePart.Text(truncatedPrompt))))
                     }
-                    // 后台主动消息：只要正文。明确禁止工具调用，否则模型会把
-                    // send_message 之类的调用格式当文本吐出来，泄漏进聊天记录。
-                    add(UIMessage(role = MessageRole.SYSTEM, parts = listOf(UIMessagePart.Text(
-                        "这是一次后台主动消息。你这次没有任何工具可用，也不许假装调用工具；" +
-                        "不要输出任何工具调用、函数调用、XML/DSML/代码块/参数标签，也不要写需要“回传”之类的话。" +
-                        "只输出你要直接对她说出口的那段话。"
-                    ))))
                     addAll(historyMessages)
-                    add(UIMessage.user(systemText))
+                    add(UIMessage.user(
+                        "$systemText\n（用你自己的语气自然回应，简短即可，不要提\"系统事件\"\"工具\"等技术词汇，不要用引号、代码块或任何标记包裹。）"
+                    ))
                 }
                 val result = providerHandler.generateText(
                     providerSetting = provider,
@@ -695,15 +693,10 @@ class ChatService(
      */
     private fun sanitizeProactiveReply(raw: String): String {
         if (raw.isBlank()) return raw
-        val allParams = Regex("<\\|{1,2}DSML\\|{1,2}\\s*parameter[^>]*>([\\s\\S]*?)</\\|{1,2}DSML\\|{1,2}>").findAll(raw)
-            .map { it.groupValues[1].trim() }.filter { it.isNotBlank() }.toList()
-        val best = allParams.maxByOrNull { it.length }
-        if (!best.isNullOrBlank()) return best
         var t = raw
         t = Regex("<\\|{2}DSML\\|{2}[\\s\\S]*?</\\|{2}DSML\\|{2}[^>]*>").replace(t, "")
         t = Regex("</?\\|{1,2}[A-Za-z_][A-Za-z0-9_]*[^>]*\\|{1,2}>").replace(t, "")
-        // 剥完为空 = 这条生成只有工具调用、没有正文：返回空让调用方跳过，
-        // 绝不能兜底回原文，否则整串 DSML 会被当回复显示出来。
+        // 剥完为空 = 只有工具调用、没有正文：返回空让调用方跳过，别把 DSML 原文显示出来
         return t.trim()
     }
 
