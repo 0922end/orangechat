@@ -598,6 +598,7 @@ class ChatService(
     fun triggerSystemReply(conversationId: Uuid, systemText: String) {
         appScope.launch(Dispatchers.IO) {
             try {
+                debugNotify("triggerSystemReply CALLED")
                 val session = getOrCreateSession(conversationId)
                 session.getJob()?.let { job ->
                     if (job.isActive) {
@@ -611,9 +612,9 @@ class ChatService(
                 val assistant = settings.getAssistantById(currentConversation.assistantId)
                     ?: settings.getCurrentAssistant()
                 val model = settings.findModelById(assistant.chatModelId ?: settings.chatModelId)
-                if (model == null) { Log.e(TAG, "triggerSystemReply: no model"); return@launch }
+                if (model == null) { Log.e(TAG, "triggerSystemReply: no model"); debugNotify("STOP: no model"); return@launch }
                 val provider = model.findProvider(settings.providers)
-                if (provider == null) { Log.e(TAG, "triggerSystemReply: no provider"); return@launch }
+                if (provider == null) { Log.e(TAG, "triggerSystemReply: no provider"); debugNotify("STOP: no provider"); return@launch }
                 val providerHandler = providerManager.getProviderByType(provider)
                 val historyMessages = currentConversation.currentMessages.let {
                     if (assistant.contextMessageSize > 0) it.takeLast(assistant.contextMessageSize) else it
@@ -654,13 +655,13 @@ class ChatService(
                     }
                 }
                 val replyText = replyParts.toString().trim()
-                if (replyText.isBlank()) { Log.w(TAG, "triggerSystemReply: empty reply"); return@launch }
+                if (replyText.isBlank()) { Log.w(TAG, "triggerSystemReply: empty reply"); debugNotify("STOP: empty reply"); return@launch }
                 val latest = conversationRepo.getConversationById(conversationId)
                     ?: getConversationFlow(conversationId).value
                 val userSentNew = latest.messageNodes.size > nodeCountBefore &&
                     latest.messageNodes.subList(nodeCountBefore, latest.messageNodes.size)
                         .any { node -> node.messages.any { it.role == MessageRole.USER } }
-                if (userSentNew) { Log.i(TAG, "triggerSystemReply: user sent new msg, skip"); return@launch }
+                if (userSentNew) { debugNotify("STOP: user sent new msg"); return@launch }
                 val aiMessage = UIMessage(role = MessageRole.ASSISTANT, parts = listOf(UIMessagePart.Text(replyText)))
                 addProactiveMessage(conversationId, aiMessage)
                 if (!isForeground.value) {
@@ -683,6 +684,20 @@ class ChatService(
                 } catch (_: Exception) {}
             }
         }
+    }
+
+
+    private fun debugNotify(msg: String) {
+        try {
+            val notification = android.app.Notification.Builder(context, "system")
+                .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                .setContentTitle("Xinchao Debug")
+                .setContentText(msg)
+                .setStyle(android.app.Notification.BigTextStyle().bigText(msg))
+                .build()
+            val nm = context.getSystemService(android.app.NotificationManager::class.java)
+            nm?.notify((System.currentTimeMillis() % 100000).toInt(), notification)
+        } catch (_: Exception) {}
     }
 
     fun notifyVoiceCallDeclined(conversationId: Uuid) {
