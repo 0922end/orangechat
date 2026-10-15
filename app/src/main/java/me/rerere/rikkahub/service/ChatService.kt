@@ -695,9 +695,10 @@ class ChatService(
      */
     private fun sanitizeProactiveReply(raw: String): String {
         if (raw.isBlank()) return raw
-        val msgParam = Regex("<\\|{1,2}DSML\\|{1,2}\\s*parameter\\s+name=\"message\"[^>]*>([\\s\\S]*?)</\\|{1,2}DSML\\|{1,2}>")
-            .find(raw)?.groupValues?.get(1)?.trim()
-        if (!msgParam.isNullOrBlank()) return msgParam
+        val allParams = Regex("<\\|{1,2}DSML\\|{1,2}\\s*parameter[^>]*>([\\s\\S]*?)</\\|{1,2}DSML\\|{1,2}>").findAll(raw)
+            .map { it.groupValues[1].trim() }.filter { it.isNotBlank() }.toList()
+        val best = allParams.maxByOrNull { it.length }
+        if (!best.isNullOrBlank()) return best
         var t = raw
         t = Regex("<\\|{2}DSML\\|{2}[\\s\\S]*?</\\|{2}DSML\\|{2}[^>]*>").replace(t, "")
         t = Regex("</?\\|{1,2}[A-Za-z_][A-Za-z0-9_]*[^>]*\\|{1,2}>").replace(t, "")
@@ -749,8 +750,10 @@ class ChatService(
                 val eventDescription = "[系统事件] 你刚刚主动发起的语音通话邀请被用户直接挂断了（拒接，未接听）。请用你自己的语气自然地回应这件事，简短即可，不要提及\"系统事件\"\"工具\"等技术词汇，不要用引号或标注包裹，就当作正常聊天说一句话。"
 
                 val messages = buildList {
-                    if (assistant.systemPrompt.isNotEmpty()) {
-                        add(UIMessage(role = MessageRole.SYSTEM, parts = listOf(UIMessagePart.Text(assistant.systemPrompt))))
+                    // truncate: strip tool listings
+                    val truncatedPrompt = assistant.systemPrompt.take(500)
+                    if (truncatedPrompt.isNotEmpty()) {
+                        add(UIMessage(role = MessageRole.SYSTEM, parts = listOf(UIMessagePart.Text(truncatedPrompt))))
                     }
                     addAll(historyMessages)
                     add(UIMessage.user(eventDescription))
