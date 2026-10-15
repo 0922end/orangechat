@@ -673,6 +673,15 @@ class ChatService(
                 if (userSentNew) { debugNotify("STOP: user sent new msg"); return@launch }
                 val aiMessage = UIMessage(role = MessageRole.ASSISTANT, parts = listOf(UIMessagePart.Text(replyText)))
                 addProactiveMessage(conversationId, aiMessage)
+                try {
+                    XinchaoUplink.sendProactiveEvent(
+                        signalText = systemText,
+                        aiReply = replyText,
+                        sessionId = conversationId.toString()
+                    )
+                } catch (e: Exception) {
+                    Log.w(TAG, "Xinchao proactive event failed", e)
+                }
                 if (!isForeground.value) {
                     val senderName = if (assistant.useAssistantAvatar) assistant.name.ifEmpty { "AI" } else model.displayName
                     sendGenerationDoneNotification(conversationId, senderName)
