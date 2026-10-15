@@ -78,7 +78,9 @@ android {
         // 避免 ~/.android/debug.keystore 因机器不同导致 adb install -r 覆盖安装失败（Failure [-99]）。
         // keystore 参数与 Android 默认 debug 签名一致：alias=androiddebugkey, password=android。
         getByName("debug") {
-            storeFile = file("debug.keystore")
+            // 仓库固定的 debug keystore（signing/debug.keystore），
+            // 保证不同机器 / 每次 CI 构建的签名都一致，覆盖安装不会 Failure [-99]。
+            storeFile = rootProject.file("signing/debug.keystore")
             storePassword = "android"
             keyAlias = "androiddebugkey"
             keyPassword = "android"
