@@ -620,7 +620,8 @@ class ChatService(
                 if (provider == null) { Log.e(TAG, "triggerSystemReply: no provider"); debugNotify("STOP: no provider"); return@launch }
                 val providerHandler = providerManager.getProviderByType(provider)
                 val historyMessages = currentConversation.currentMessages.let {
-                    if (assistant.contextMessageSize > 0) it.takeLast(assistant.contextMessageSize) else it
+                    val base = if (assistant.contextMessageSize > 0) it.takeLast(assistant.contextMessageSize) else it
+                    base.map { m -> m.copy(parts = m.parts.filterNot { p -> p is UIMessagePart.Reasoning }) }
                 }
                 val nodeCountBefore = currentConversation.messageNodes.size
                 val messages = buildList {
@@ -737,7 +738,8 @@ class ChatService(
                 val providerHandler = providerManager.getProviderByType(provider)
 
                 val historyMessages = currentConversation.currentMessages.let {
-                    if (assistant.contextMessageSize > 0) it.takeLast(assistant.contextMessageSize) else it
+                    val base = if (assistant.contextMessageSize > 0) it.takeLast(assistant.contextMessageSize) else it
+                    base.map { m -> m.copy(parts = m.parts.filterNot { p -> p is UIMessagePart.Reasoning }) }
                 }
 
                 // 记录生成开始前的消息节点数量，作为"生成期间是否有新消息插入"的判断基准
