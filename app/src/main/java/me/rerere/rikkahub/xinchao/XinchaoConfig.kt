@@ -6,7 +6,7 @@ import androidx.core.content.edit
 
 object XinchaoConfig {
     private const val PREFS_NAME = "xinchao_config"
-    private const val DEFAULT_BASE_URL = "https://strings-citizens-seminars-pie.trycloudflare.com"
+    private const val DEFAULT_BASE_URL = "http://45.152.65.173:18110"
     const val CONVERSATION_TOKEN = "453ac084dee33b07916a8706a7da4550"
     const val BRIDGE_TOKEN       = "c3e24c5e3415a7b17ac6a1d4df9d1b8ba799b984"
     const val PHONE_TOKEN        = "5e93194001661c7ec26c36a69e5e36bb"
