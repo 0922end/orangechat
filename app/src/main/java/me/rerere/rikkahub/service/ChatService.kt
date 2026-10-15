@@ -637,7 +637,7 @@ class ChatService(
                     messages = messages,
                     params = TextGenerationParams(
                         model = model,
-                        temperature = assistant.temperature ?: 0.8f,
+                        temperature = assistant.temperature,
                         topP = assistant.topP,
                         maxTokens = assistant.maxTokens,
                         reasoningLevel = assistant.reasoningLevel,
@@ -758,7 +758,7 @@ class ChatService(
                     messages = messages,
                     params = TextGenerationParams(
                         model = model,
-                        temperature = assistant.temperature ?: 0.8f,
+                        temperature = assistant.temperature,
                         topP = assistant.topP,
                         maxTokens = assistant.maxTokens,
                         reasoningLevel = assistant.reasoningLevel,
