@@ -60,6 +60,7 @@ import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.canResumeToolExecution
 import me.rerere.ai.ui.finishPendingTools
 import me.rerere.ai.ui.finishReasoning
+import me.rerere.ai.ui.handleMessageChunk
 import me.rerere.ai.ui.isEmptyInputMessage
 import me.rerere.common.android.Logging
 import me.rerere.rikkahub.AppScope
@@ -638,7 +639,10 @@ class ChatService(
                         "$systemText\n（用你自己的语气自然回应，简短即可，不要提\"系统事件\"\"工具\"等技术词汇，不要用引号、代码块或任何标记包裹。）"
                     ))
                 }
-                val result = providerHandler.generateText(
+                // 流式 + handleMessageChunk：把 Claude 的 tool_use 解析成 Tool part，
+                // 而不是被非流式 toText() 序列化成 <||DSML||> 文本泄漏到聊天里。
+                var streamed = messages
+                providerHandler.streamText(
                     providerSetting = provider,
                     messages = messages,
                     params = TextGenerationParams(
@@ -656,8 +660,16 @@ class ChatService(
                             addAll(model.customBodies)
                         },
                     ),
+                ).collect { chunk ->
+                    streamed = streamed.handleMessageChunk(chunk = chunk, model = model)
+                }
+                val replyMessage = streamed.lastOrNull() ?: run {
+                    Log.w(TAG, "triggerSystemReply: empty stream"); return@launch
+                }
+                val replyText = sanitizeProactiveReply(
+                    replyMessage.parts.filterIsInstance<UIMessagePart.Text>()
+                        .joinToString("\n") { it.text }.trim()
                 )
-                val replyText = sanitizeProactiveReply(result.choices[0].message?.toText()?.trim().orEmpty())
                 if (replyText.isBlank()) { Log.w(TAG, "triggerSystemReply: empty reply"); return@launch }
                 val latest = conversationRepo.getConversationById(conversationId)
                     ?: getConversationFlow(conversationId).value
