@@ -14,8 +14,9 @@ object XinchaoInjector {
     private val pendingSignals = ConcurrentLinkedQueue<XinchaoBridge.BridgeSignal>()
     @Volatile private var registered = false
 
-    // ChatService sets this callback to insert proactive messages
-    var onSignalForChat: ((String) -> Unit)? = null
+    // ChatService sets this callback to insert proactive messages.
+    // 返回 true 表示已就绪、能立刻处理这条信号；false 表示当前没有活跃对话，交给队列等下次。
+    var onSignalForChat: ((String) -> Boolean)? = null
     @Volatile var lastActiveConversationId: Uuid? = null
 
     private val client = OkHttpClient.Builder()
@@ -27,17 +28,22 @@ object XinchaoInjector {
         if (registered) return
         registered = true
         XinchaoService.signalListeners.add { signal ->
-            pendingSignals.offer(signal)
-            Log.d(TAG, "Signal queued: [${signal.reason}] ${signal.message.take(40)}")
-            // If ChatService registered a callback, push signal as proactive message
+            // 单路径处理，避免同一条信号被消费两次：
+            //  - 有活跃对话 → 走主动回复（triggerSystemReply），不再进队列
+            //  - 没有活跃对话 / 触发失败 → 入队，等她下一次说话时注入上下文
             val callback = onSignalForChat
+            var handled = false
             if (callback != null && signal.message.isNotBlank()) {
                 try {
-                    callback(signal.message)
-                    Log.d(TAG, "Signal pushed to chat: ${signal.message.take(40)}")
+                    handled = callback(signal.message)
+                    if (handled) Log.d(TAG, "Signal pushed to chat: [${signal.reason}] ${signal.message.take(40)}")
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to push signal to chat: ${e.message}")
                 }
+            }
+            if (!handled) {
+                pendingSignals.offer(signal)
+                Log.d(TAG, "Signal queued for next turn: [${signal.reason}] ${signal.message.take(40)}")
             }
         }
         Log.d(TAG, "Registered as signal listener")
