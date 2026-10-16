@@ -335,17 +335,7 @@ class ChatVM(
                 )
             }
 
-            chatService.updateConversationState(_conversationId) { currentConversation ->
-                currentConversation.copy(
-                    messageNodes = currentConversation.messageNodes.map { existingNode ->
-                        if (existingNode.id == node.id) {
-                            existingNode.copy(isFavorite = !currentlyFavorited)
-                        } else {
-                            existingNode
-                        }
-                    }
-                )
-            }
+            // Favorite state managed by favoriteRepository only
         }
     }
 
