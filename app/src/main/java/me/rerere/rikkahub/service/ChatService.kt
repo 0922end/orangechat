@@ -262,13 +262,24 @@ class ChatService(
             debugNotify("callback FIRED")
             val convId = XinchaoInjector.lastActiveConversationId
             if (convId != null) {
-                debugNotify("sendMessage for conv=" + convId.toString().take(8))
-                sendMessage(
-                    conversationId = convId,
-                    content = listOf(me.rerere.ai.ui.UIMessagePart.Text(signalText)),
-                    answer = true
-                )
-                true
+                debugNotify("triggering handleMessageComplete for conv=" + convId.toString().take(8))
+                // Don't consume signal here (return false) so it stays in pendingSignals queue.
+                // Then trigger handleMessageComplete which calls consumePendingSignals()
+                // to inject signal into system prompt - full pipeline with memory/tools/transforms.
+                // Signal never enters chat history, only lives in system prompt.
+                appScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    try {
+                        val session = getOrCreateSession(convId)
+                        session.getJob()?.let { job ->
+                            if (job.isActive) job.join()
+                        }
+                        handleMessageComplete(convId)
+                    } catch (e: Exception) {
+                        android.util.Log.e("ChatService", "xinchao handleMessageComplete failed", e)
+                        debugNotify("handleMessageComplete error: " + (e.message?.take(100) ?: "unknown"))
+                    }
+                }
+                false // leave signal in pendingSignals queue for consumePendingSignals()
             } else {
                 debugNotify("convId NULL")
                 false
