@@ -314,7 +314,9 @@ class ChatVM(
     }
 
     fun updateConversation(newConversation: Conversation) {
-        chatService.updateConversation(_conversationId, newConversation)
+        chatService.updateConversationState(_conversationId) {
+            newConversation
+        }
     }
 
     fun toggleMessageFavorite(node: MessageNode) {
@@ -333,7 +335,17 @@ class ChatVM(
                 )
             }
 
-            // Favorite state managed by favoriteRepository, no conversation update needed
+            chatService.updateConversationState(_conversationId) { currentConversation ->
+                currentConversation.copy(
+                    messageNodes = currentConversation.messageNodes.map { existingNode ->
+                        if (existingNode.id == node.id) {
+                            existingNode.copy(isFavorite = !currentlyFavorited)
+                        } else {
+                            existingNode
+                        }
+                    }
+                )
+            }
         }
     }
 
