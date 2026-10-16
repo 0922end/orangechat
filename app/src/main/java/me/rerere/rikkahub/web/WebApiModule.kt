@@ -36,7 +36,7 @@ import me.rerere.rikkahub.web.dto.WebAuthTokenRequest
 import me.rerere.rikkahub.web.dto.WebAuthTokenResponse
 import me.rerere.rikkahub.web.routes.aiIconRoutes
 import me.rerere.rikkahub.web.routes.assetsRoutes
-import me.rerere.rikkahub.web.routes.conversationRoutes
+// import me.rerere.rikkahub.web.routes.conversationRoutes // TODO: removed broken file
 import me.rerere.rikkahub.web.routes.filesRoutes
 import me.rerere.rikkahub.web.routes.settingsRoutes
 import java.security.MessageDigest
@@ -171,13 +171,13 @@ fun Application.configureWebApi(
 
             if (jwtEnabled) {
                 authenticate("auth-jwt") {
-                    conversationRoutes(chatService, conversationRepo, settingsStore)
+// conversationRoutes(chatService, conversationRepo, settingsStore) // TODO: removed broken file
                     settingsRoutes(settingsStore)
                     filesRoutes(filesManager, context)
                     assetsRoutes(context)
                 }
             } else {
-                conversationRoutes(chatService, conversationRepo, settingsStore)
+// conversationRoutes(chatService, conversationRepo, settingsStore) // TODO: removed broken file
                 settingsRoutes(settingsStore)
                 filesRoutes(filesManager, context)
                 assetsRoutes(context)
