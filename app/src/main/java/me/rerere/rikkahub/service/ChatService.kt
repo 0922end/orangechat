@@ -262,24 +262,9 @@ class ChatService(
             debugNotify("callback FIRED")
             val convId = XinchaoInjector.lastActiveConversationId
             if (convId != null) {
-                debugNotify("triggering handleMessageComplete for conv=" + convId.toString().take(8))
-                // Don't consume signal here (return false) so it stays in pendingSignals queue.
-                // Then trigger handleMessageComplete which calls consumePendingSignals()
-                // to inject signal into system prompt - full pipeline with memory/tools/transforms.
-                // Signal never enters chat history, only lives in system prompt.
-                appScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                    try {
-                        val session = getOrCreateSession(convId)
-                        session.getJob()?.let { job ->
-                            if (job.isActive) job.join()
-                        }
-                        handleMessageComplete(convId)
-                    } catch (e: Exception) {
-                        android.util.Log.e("ChatService", "xinchao handleMessageComplete failed", e)
-                        debugNotify("handleMessageComplete error: " + (e.message?.take(100) ?: "unknown"))
-                    }
-                }
-                false // leave signal in pendingSignals queue for consumePendingSignals()
+                debugNotify("triggerXinchaoReply for conv=" + convId.toString().take(8))
+                triggerXinchaoReply(convId, signalText)
+                true // handled
             } else {
                 debugNotify("convId NULL")
                 false
@@ -715,6 +700,187 @@ class ChatService(
         }
     }
 
+
+
+    /**
+     * Xinchao signal triggers AI reply via full pipeline (like ProactiveMessageTriggerService).
+     * Signal is injected into system prompt, NOT into chat history.
+     * Only the AI reply is saved to conversation. User never sees the signal in chat.
+     * Xinchao context (drives/emotion/dreams) is fetched and injected.
+     */
+    fun triggerXinchaoReply(conversationId: Uuid, signalText: String) {
+        appScope.launch(Dispatchers.IO) {
+            try {
+                debugNotify("triggerXinchaoReply STARTED")
+                val session = getOrCreateSession(conversationId)
+                // Wait for any ongoing generation
+                session.getJob()?.let { job ->
+                    if (job.isActive) {
+                        Log.i(TAG, "triggerXinchaoReply: waiting for ongoing generation")
+                        job.join()
+                    }
+                }
+                val settings = settingsStore.settingsFlow.first()
+                val currentConversation = conversationRepo.getConversationById(conversationId)
+                    ?: getConversationFlow(conversationId).value
+                val assistant = settings.getAssistantById(currentConversation.assistantId)
+                    ?: settings.getCurrentAssistant()
+                val model = settings.findModelById(assistant.chatModelId ?: settings.chatModelId)
+                if (model == null) { debugNotify("STOP: no model"); return@launch }
+                val provider = model.findProvider(settings.providers)
+                if (provider == null) { debugNotify("STOP: no provider"); return@launch }
+                val providerHandler = providerManager.getProviderByType(provider)
+
+                // Build system prompt: assistant prompt + memory + xinchao context + signal
+                val systemPrompt = buildString {
+                    if (assistant.systemPrompt.isNotBlank()) {
+                        append(assistant.systemPrompt)
+                    }
+                    // Memory (same as GenerationHandler)
+                    if (assistant.enableMemory) {
+                        val memories = if (assistant.useGlobalMemory) {
+                            memoryRepository.getGlobalMemories()
+                        } else {
+                            memoryRepository.getMemoriesOfAssistant(assistant.id.toString())
+                        }
+                        if (memories.isNotEmpty()) {
+                            appendLine()
+                            appendLine()
+                            appendLine("**Memories**")
+                            appendLine("These are memories stored via the memory_tool that you can reference in future conversations.")
+                            appendLine("[")
+                            memories.forEachIndexed { index, memory ->
+                                appendLine("    {")
+                                appendLine("        "id": ${memory.id},")
+                                appendLine("        "content": "${memory.content.replace(""", "\\"").replace("
+", "\n")}"")
+                                appendLine("    }${if (index < memories.size - 1) "," else ""}")
+                            }
+                            appendLine("]")
+                        }
+                    }
+                    // Xinchao context (drives/emotion/dreams)
+                    val xinchaoContext = XinchaoInjector.fetchContext()
+                    if (xinchaoContext.isNotBlank()) {
+                        appendLine()
+                        append(xinchaoContext)
+                    }
+                    // Signal as system event
+                    appendLine()
+                    appendLine()
+                    appendLine("[系统事件] 心潮动态：" + signalText)
+                    appendLine("请用你自己的语气自然地回应，一两句话即可。")
+                }
+
+                // History messages (strip reasoning parts to avoid Anthropic signature issues)
+                val historyMessages = currentConversation.currentMessages.let {
+                    val base = if (assistant.contextMessageSize > 0) it.takeLast(assistant.contextMessageSize) else it
+                    base.map { m -> m.copy(parts = m.parts.filterNot { p -> p is UIMessagePart.Reasoning }) }
+                }
+
+                // Build messages: System + History + neutral user trigger (NOT saved to DB)
+                val nodeCountBefore = currentConversation.messageNodes.size
+                val messages = buildList {
+                    add(UIMessage(role = MessageRole.SYSTEM, parts = listOf(UIMessagePart.Text(systemPrompt))))
+                    addAll(historyMessages)
+                    add(UIMessage.user("（请自然回应上面的心潮动态）"))
+                }
+
+                // Build tools (same as ProactiveMessageTriggerService)
+                val tools = buildList {
+                    addAll(localTools.getTools(assistant.localTools, me.rerere.rikkahub.data.ai.tools.ToolInvocationContext(
+                        callerAssistantId = assistant.id.toString(),
+                        callerConversationId = conversationId.toString(),
+                    )))
+                    val systemToolsOptions = settings.systemToolsSetting.getEnabledOptions().toMutableSet()
+                    if (settings.externalMemories.any { it.enabled }) {
+                        systemToolsOptions.add(me.rerere.rikkahub.data.ai.tools.SystemToolOption.SupabaseQuery)
+                    }
+                    if (systemToolsOptions.isNotEmpty()) {
+                        val systemTools = me.rerere.rikkahub.data.ai.tools.SystemTools(context, settings)
+                        addAll(systemTools.getTools(systemToolsOptions, currentConversation.currentMessages, filesManager))
+                    }
+                    mcpManager.getAllAvailableTools().forEach { (serverId, tool) ->
+                        add(
+                            me.rerere.ai.core.Tool(
+                                name = me.rerere.rikkahub.data.ai.tools.ToolNaming.buildMcpToolName(serverId, tool.name),
+                                description = tool.description ?: "",
+                                parameters = { tool.inputSchema },
+                                needsApproval = tool.needsApproval,
+                                execute = { mcpManager.callTool(serverId, tool.name, it.jsonObject) },
+                            )
+                        )
+                    }
+                }
+
+                val params = TextGenerationParams(
+                    model = model,
+                    temperature = assistant.temperature,
+                    topP = assistant.topP,
+                    maxTokens = assistant.maxTokens,
+                    tools = tools,
+                    reasoningLevel = assistant.reasoningLevel,
+                    customHeaders = buildList {
+                        addAll(assistant.customHeaders)
+                        addAll(model.customHeaders)
+                    },
+                    customBody = buildList {
+                        addAll(assistant.customBodies)
+                        addAll(model.customBodies)
+                    },
+                )
+
+                // Stream generate (like ProactiveMessageTriggerService.generateWithTools)
+                val replyParts = StringBuilder()
+                providerHandler.streamText(
+                    providerSetting = provider,
+                    messages = messages,
+                    params = params,
+                ).collect { chunk ->
+                    val delta = chunk.choices.firstOrNull()?.delta
+                    if (delta != null) {
+                        val text = delta.toText()
+                        if (text.isNotBlank()) replyParts.append(text)
+                    }
+                }
+                val replyText = replyParts.toString().trim()
+                if (replyText.isBlank()) { debugNotify("STOP: empty reply"); return@launch }
+
+                // Check if user sent new message during generation
+                val latest = conversationRepo.getConversationById(conversationId)
+                    ?: getConversationFlow(conversationId).value
+                val userSentNew = latest.messageNodes.size > nodeCountBefore &&
+                    latest.messageNodes.subList(nodeCountBefore, latest.messageNodes.size)
+                        .any { node -> node.messages.any { it.role == MessageRole.USER } }
+                if (userSentNew) { debugNotify("STOP: user sent new msg"); return@launch }
+
+                // Save ONLY the AI reply to conversation (signal never enters chat history)
+                val aiMessage = UIMessage(role = MessageRole.ASSISTANT, parts = listOf(UIMessagePart.Text(replyText)))
+                addProactiveMessage(conversationId, aiMessage)
+                debugNotify("SUCCESS: " + replyText.take(40))
+
+                // Notify if not in foreground
+                if (!isForeground.value) {
+                    val senderName = if (assistant.useAssistantAvatar) assistant.name.ifEmpty { "AI" } else model.displayName
+                    sendGenerationDoneNotification(conversationId, senderName)
+                }
+
+                // Auto-report back to xinchao
+                try {
+                    XinchaoUplink.sendProactiveEvent(
+                        signalText = signalText,
+                        aiReply = replyText,
+                        sessionId = conversationId.toString()
+                    )
+                } catch (e: Exception) {
+                    Log.w(TAG, "Xinchao proactive event report failed", e)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "triggerXinchaoReply failed", e)
+                debugNotify("triggerXinchaoReply error: " + (e.message?.take(100) ?: "unknown"))
+            }
+        }
+    }
 
     private fun debugNotify(msg: String) {
         try {
