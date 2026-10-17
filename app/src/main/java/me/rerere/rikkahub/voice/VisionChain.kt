@@ -127,4 +127,54 @@ class VisionChain {
     fun reset() { lastThumb = null; lastDescAt = 0L; lastObservation = null; resetCompanion() }
     fun release() { scope.cancel() }
     private fun nowSeconds(): Long = System.currentTimeMillis() / 1000
+
+    /**
+     * VoiceCallService 调这个：传入 Assessment，返回要说的话（String?），null 表示不开口。
+     * 对应 server.py companion_frame 的状态机逻辑。
+     */
+    fun companionStateMachine(assessment: Assessment): String? {
+        val now = nowSeconds()
+        val was = compPresent
+        compPresent = assessment.present
+
+        if (!assessment.present) {
+            if (compAbsentSince == 0L) {
+                compAbsentSince = now
+            } else if (!compLeftReported && now - compAbsentSince >= COMP_ABSENT_SECS) {
+                compLeftReported = true
+                val mins = ((now - compAbsentSince) / 60).toInt()
+                compLastNudge = now
+                compStillSince = now
+                return "对方离开座位 ${mins} 分钟了，画面里没人"
+            }
+            return null
+        }
+
+        if (was == false && compLeftReported) {
+            compAbsentSince = 0L
+            compLeftReported = false
+            compLastNudge = now
+            compStillSince = now
+            return "对方回来了" + if (assessment.activity.isNotEmpty()) "，" + assessment.activity else ""
+        }
+
+        compAbsentSince = 0L
+        compLeftReported = false
+
+        if (assessment.notable.isNotEmpty() && now - compLastNudge >= COMP_NUDGE_COOLDOWN) {
+            compLastNudge = now
+            compStillSince = now
+            return "对方" + assessment.notable + if (assessment.activity.isNotEmpty()) "，现在" + assessment.activity else ""
+        }
+
+        if (compPresent == true && now - compStillSince >= COMP_STILL_SECS && now - compLastNudge >= COMP_NUDGE_COOLDOWN) {
+            compReminders += 1
+            val tip = if (compReminders % 2 == 1) "喝口水" else "站起来活动一下"
+            compLastNudge = now
+            compStillSince = now
+            return "对方已经 " + (COMP_STILL_SECS / 60).toString() + " 分钟没什么动静了；提醒" + tip
+        }
+
+        return null
+    }
 }
