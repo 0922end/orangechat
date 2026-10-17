@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit
 
 class AsrClient(
     private val apiKey: String,
-    private val wsUrl: String = "wss://ws-j0d35q9jai174ox1.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference?model=qwen3-asr-flash-realtime",
+    private val wsUrl: String = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=qwen3-asr-flash-realtime",
     private val vadThreshold: Float = 0.5f,
     private val silenceDurationMs: Int = 800
 ) {
@@ -36,7 +36,7 @@ class AsrClient(
 
     fun connect() {
         if (isConnected) return
-        val request = Request.Builder().url(wsUrl).header("Authorization", "Bearer $apiKey").build()
+        val request = Request.Builder().url(wsUrl).header("Authorization", "Bearer $apiKey").header("OpenAI-Beta", "realtime=v1").build()
         ws = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 isConnected = true; sessionConfigured = false; sendSessionUpdate(webSocket); _events.tryEmit(AsrEvent.Connected)
@@ -65,9 +65,11 @@ class AsrClient(
 
     private fun sendSessionUpdate(webSocket: WebSocket) {
         val session = JSONObject().apply {
+            put("model", "qwen3-asr-flash-realtime")
             put("modalities", JSONArray().apply { put("text") })
             put("input_audio_format", "pcm")
-            put("turn_detection", JSONObject().apply { put("type", "server_vad"); put("threshold", vadThreshold.toDouble()); put("silence_duration_ms", silenceDurationMs) })
+            put("sample_rate", 16000)
+            put("turn_detection", JSONObject().apply { put("type", "server_vad") })
         }
         val sent = webSocket.send(JSONObject().apply { put("type", "session.update"); put("session", session) }.toString())
         if (sent) sessionConfigured = true else _events.tryEmit(AsrEvent.Error("Failed to send session config"))
@@ -78,8 +80,8 @@ class AsrClient(
             val json = JSONObject(text)
             when (json.optString("type", "")) {
                 "session.created", "session.updated" -> { sessionConfigured = true }
-                "conversation.item.input_audio_transcription.completed" -> { val t = json.optString("transcript", "").trim(); if (t.isNotEmpty()) _events.tryEmit(AsrEvent.Transcript(t)) }
-                "conversation.item.input_audio_transcription.delta" -> { val d = json.optString("delta", "").trim(); if (d.isNotEmpty()) _events.tryEmit(AsrEvent.Partial(d)) }
+                "response.audio_transcript.done" -> { val t = json.optString("transcript", "").trim().ifBlank { json.optString("text", "").trim() }; if (t.isNotEmpty()) _events.tryEmit(AsrEvent.Transcript(t)) }
+                "response.audio_transcript.delta" -> { val d = json.optString("delta", "").trim().ifBlank { json.optString("text", "").trim() }; if (d.isNotEmpty()) _events.tryEmit(AsrEvent.Partial(d)) }
                 "error" -> { val msg = json.optJSONObject("error")?.optString("message", "Unknown") ?: "Unknown"; _events.tryEmit(AsrEvent.Error(msg)) }
                 else -> {}
             }
