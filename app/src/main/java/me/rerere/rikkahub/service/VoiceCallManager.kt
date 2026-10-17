@@ -5,6 +5,7 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
+import android.util.Base64
 import android.util.Log
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,7 +17,6 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.Base64
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.min
 import kotlin.math.sqrt
@@ -516,7 +516,7 @@ class VoiceCallManager(
             val append = JSONObject()
                 .put("type", "input_audio_buffer.append")
                 .put("event_id", "event_${System.nanoTime()}")
-                .put("audio", Base64.getEncoder().encodeToString(pcm16))
+                .put("audio", Base64.encodeToString(pcm16, Base64.NO_WRAP))
             if (!socket.send(append.toString())) {
                 Log.w(ASR_TAG, "音频块入队失败")
             }
@@ -528,7 +528,6 @@ class VoiceCallManager(
             val request = Request.Builder()
                 .url(url)
                 .header("Authorization", "Bearer $apiKey")
-                .header("OpenAI-Beta", "realtime=v1")
                 .build()
             try {
                 webSocket = httpClient.newWebSocket(request, listener)
@@ -546,7 +545,6 @@ class VoiceCallManager(
                 .put("silence_duration_ms", 800)
             val session = JSONObject()
                 .put("input_audio_format", "pcm")
-                .put("sample_rate", 16000)
                 .put("modalities", JSONArray().put("text"))
                 .put("turn_detection", turnDetection)
             val update = JSONObject()
