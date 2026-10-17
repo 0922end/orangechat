@@ -27,6 +27,9 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.uuid.Uuid
+import me.rerere.rikkahub.voice.VoiceCallManager
+import me.rerere.rikkahub.voice.VoiceCallManagerState
+import me.rerere.rikkahub.voice.VisionChain
 
 private const val TAG = "VoiceCallService"
 
@@ -333,10 +336,7 @@ class VoiceCallService : Service(), KoinComponent {
     }
     
     private fun initVisionChain() {
-        visionChain = VisionChain(
-            context = this,
-            scope = serviceScope
-        )
+        visionChain = VisionChain()
         
         startCameraCapture()
     }
