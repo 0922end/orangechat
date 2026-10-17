@@ -3,362 +3,267 @@ package me.rerere.rikkahub.service
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Color
+import android.util.Base64
 import android.util.Log
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
-import java.security.MessageDigest
-import java.util.*
+import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 
 private const val TAG = "VisionChain"
 
 /**
- * Elian 视觉识别链 - 完整移植 pai-voice vision.py
- * 
- * 核心功能：
- * 1. 多模型降级链（百炼 → Groq → 用户自定义）
- * 2. 画面变化检测（32×32 灰度缩略图像素差）
- * 3. 陪伴模式状态机（在座/离开/小动作）
+ * Elian 视觉链 - 从 pai-voice vision.py 逐行移植
+ *
+ * 功能：
+ * 1. 32x32 灰度缩图 + 帧差检测（对应 _thumb + changed）
+ * 2. 多后端 fallback 视觉描述链（对应 backend_chain + _run + _describe）
+ * 3. 陪伴模式评估（对应 assess + parse_assessment）
+ * 4. 单次超时 VISION_TIMEOUT=12s + 整轮超时 VISION_TOTAL_TIMEOUT=25s
+ * 5. MIN_INTERVAL=8s 防过频 + busy 防并发
  */
 class VisionChain(
     private val context: Context,
     private val scope: CoroutineScope
 ) {
-    // ========== 配置参数（来自 pai-vision）==========
-    private val THUMBNAIL_SIZE = 32                    // 缩略图尺寸
-    private val CHANGE_THRESHOLD = 0.15f               // 画面变化阈值（15%像素变化）
-    private val MODEL_TIMEOUT_MS = 12000L              // 单个模型超时12秒
-    private val TOTAL_TIMEOUT_MS = 25000L              // 整轮超时25秒
-    
-    // ========== 陪伴模式状态 ==========
-    private var lastPresent = true
-    private var absentSince = 0L
-    private var lastActivity = ""
-    private var lastNotificationTime = 0L
-    private val ABSENT_NOTIFY_THRESHOLD_MS = 120000L   // 离开2分钟提醒
-    private val IDLE_NOTIFY_THRESHOLD_MS = 1800000L    // 30分钟没动静提醒
-    
+    // ========== 常量（对应 vision.py 顶部环境变量，Android 端写死）==========
+    companion object {
+        const val VISION_TIMEOUT = 12_000L       // 单个后端超时（毫秒）(line 30)
+        const val VISION_TOTAL_TIMEOUT = 25_000L // 整轮超时（毫秒）(line 31)
+        const val DIFF_THRESHOLD = 0.06f          // 32x32 灰度平均像素差阈值 (line 32)
+        const val MIN_INTERVAL = 8_000L           // 最小描述间隔（毫秒）(line 33)
+
+        // 实时模式提示词 (line 34-37)
+        const val PROMPT = "这是视频通话时从对方摄像头里抽的一帧。用中文、两句话以内描述你看到的：对方在哪、在做什么、表情和状态、有没有值得一提的细节。只描述，不评价，不打招呼，不加前缀。"
+
+        // 陪伴模式提示词 (line 40-45)
+        const val COMPANION_PROMPT = "这是视频通话中从对方摄像头里抽的一帧。对方在工作或学习，你只是安静的观察员。只输出一行 JSON，不要任何别的字：" +
+            "{\"present\": 画面里有没有人（true/false）, \"activity\": \"在做什么，十个字以内\", " +
+            "\"notable\": \"值得搭话的小动作：伸懒腰、趴桌、揉眼、打哈欠、明显发呆走神、一直玩手机、对镜头笑或摆手之类，十个字以内；正常工作学习就写空字符串\"}"
+    }
+
+    // ========== 后端链配置（对应 backend_chain，line 63-75）==========
+    data class VisionBackend(
+        val name: String,
+        val baseUrl: String,
+        val apiKey: String,
+        val model: String,
+        val proxy: String? = null
+    )
+
+    private var chain: List<VisionBackend> = emptyList()
+    val enabled: Boolean get() = chain.isNotEmpty()
+
+    /** 配置后端链。调用方按优先级传入，内部逐家尝试。(line 63-75) */
+    fun configureBackends(backends: List<VisionBackend>) {
+        chain = backends.filter {
+            it.baseUrl.isNotBlank() && it.apiKey.isNotBlank() && it.model.isNotBlank()
+        }
+        Log.i(TAG, "vision 链：${chain.joinToString(" → ") { it.name }.ifEmpty { "off" }}")
+    }
+
+    // ========== 帧差检测状态（对应 Eyes.__init__，line 90-98）==========
+    private var _lastThumb: FloatArray? = null  // (line 93)
+    private var _lastDescAt = 0L                // (line 94) 毫秒
+    @Volatile var busy = false                  // (line 95)
+        private set
+    var lastObservation: String? = null          // (line 96)
+        private set
+    var lastBackend: String? = null              // (line 97)
+        private set
+
     private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+        .connectTimeout(VISION_TIMEOUT + 2000, TimeUnit.MILLISECONDS)
+        .readTimeout(VISION_TIMEOUT + 2000, TimeUnit.MILLISECONDS)
         .build()
-    
-    // ========== 缓存上一帧缩略图 ==========
-    private var lastThumbnailHash: String? = null
-    
-    // ========== 公开方法 ==========
-    
-    /**
-     * 描述画面（实时模式）
-     * @param jpeg JPEG格式图片字节数组
-     * @return 画面描述文字，如"你在电脑前工作，桌上有咖啡杯"
-     */
-    suspend fun describe(jpeg: ByteArray): String? {
-        val backends = loadVisionBackends()
-        if (backends.isEmpty()) {
-            Log.w(TAG, "没有配置任何视觉模型")
-            return null
-        }
-        
-        val base64 = Base64.getEncoder().encodeToString(jpeg)
-        val prompt = "用中文两句话描述画面，简洁具体"
-        
-        return withTimeout(TOTAL_TIMEOUT_MS) {
-            for (backend in backends) {
-                try {
-                    val result = withTimeout(MODEL_TIMEOUT_MS) {
-                        callVisionModel(backend, base64, prompt)
-                    }
-                    if (result.isNotBlank()) {
-                        Log.d(TAG, "视觉模型 ${backend.name} 返回: $result")
-                        return@withTimeout result
-                    }
-                } catch (e: TimeoutCancellationException) {
-                    Log.w(TAG, "视觉模型 ${backend.name} 超时，切换下一个")
-                } catch (e: Exception) {
-                    Log.w(TAG, "视觉模型 ${backend.name} 失败: ${e.message}，切换下一个")
-                }
-            }
-            return@withTimeout null
-        }
-    }
-    
-    /**
-     * 陪伴模式：评估画面并返回结构化JSON
-     * @param jpeg JPEG格式图片字节数组
-     * @return CompanionAssessment 或 null
-     */
-    suspend fun assess(jpeg: ByteArray): CompanionAssessment? {
-        val backends = loadVisionBackends()
-        if (backends.isEmpty()) return null
-        
-        val base64 = Base64.getEncoder().encodeToString(jpeg)
-        val prompt = """
-用JSON格式回答，只返回JSON不要其他文字：
-{
-  "present": true/false,
-  "activity": "在做什么（如：敲键盘）",
-  "notable": "值得搭话的小动作（如：伸懒腰），没有就空字符串"
-}
-        """.trimIndent()
-        
-        return withTimeout(TOTAL_TIMEOUT_MS) {
-            for (backend in backends) {
-                try {
-                    val result = withTimeout(MODEL_TIMEOUT_MS) {
-                        callVisionModel(backend, base64, prompt)
-                    }
-                    if (result.isNotBlank()) {
-                        return@withTimeout parseAssessment(result)
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "陪伴模式评估失败: ${e.message}")
-                }
-            }
-            return@withTimeout null
-        }
-    }
-    
-    /**
-     * 检测画面是否变化（pai-voice changed 函数）
-     * @param jpeg JPEG格式图片字节数组
-     * @return true 表示画面有明显变化
-     */
-    suspend fun changed(jpeg: ByteArray): Boolean = withContext(Dispatchers.Default) {
-        val currentHash = computeThumbnailHash(jpeg)
-        val lastHash = lastThumbnailHash
-        
-        lastThumbnailHash = currentHash
-        
-        if (lastHash == null) {
-            // 第一帧，算作变化
-            return@withContext true
-        }
-        
-        // 比较两个缩略图的像素差异
-        val diff = hammingDistance(lastHash, currentHash)
-        val totalPixels = THUMBNAIL_SIZE * THUMBNAIL_SIZE
-        val changeRatio = diff.toFloat() / totalPixels
-        
-        Log.d(TAG, "画面变化率: ${(changeRatio * 100).toInt()}%")
-        return@withContext changeRatio > CHANGE_THRESHOLD
-    }
-    
-    /**
-     * 陪伴模式状态机（pai-voice companion_frame 函数）
-     * @param assessment 画面评估结果
-     * @return 需要通知AI的消息，null表示不需要通知
-     */
-    fun companionStateMachine(assessment: CompanionAssessment): String? {
-        val now = System.currentTimeMillis()
-        
-        // 检测离开/回来
-        when {
-            !assessment.present && lastPresent -> {
-                // 刚离开
-                absentSince = now
-                lastPresent = false
-                Log.d(TAG, "用户离开座位")
-                return null // 刚离开不提醒
-            }
-            
-            !assessment.present && !lastPresent -> {
-                // 持续不在
-                if (now - absentSince > ABSENT_NOTIFY_THRESHOLD_MS && 
-                    now - lastNotificationTime > 60000L) {
-                    // 离开超过2分钟，提醒一次
-                    lastNotificationTime = now
-                    Log.d(TAG, "用户离开超过2分钟，提醒")
-                    return "[陪伴模式] 你离开座位${(now - absentSince) / 60000}分钟了，去哪了？"
-                }
-            }
-            
-            assessment.present && !lastPresent -> {
-                // 回来了
-                lastPresent = true
-                absentSince = 0L
-                Log.d(TAG, "用户回到座位")
-                return "[陪伴模式] 回来啦"
-            }
-        }
-        
-        // 在座时检测小动作
-        if (assessment.present && assessment.notable.isNotBlank()) {
-            if (now - lastNotificationTime > 60000L) {
-                lastNotificationTime = now
-                Log.d(TAG, "检测到小动作: ${assessment.notable}")
-                return "[陪伴模式] ${assessment.notable}，累了吗？"
-            }
-        }
-        
-        // 检测长时间无活动
-        if (assessment.present && assessment.activity != lastActivity) {
-            lastActivity = assessment.activity
-            lastNotificationTime = now
-        } else if (assessment.present && now - lastNotificationTime > IDLE_NOTIFY_THRESHOLD_MS) {
-            lastNotificationTime = now
-            Log.d(TAG, "30分钟没动静")
-            return "[陪伴模式] 30分钟了，喝口水休息一下吧"
-        }
-        
-        return null
-    }
-    
-    // ========== 私有方法 ==========
-    
-    private fun loadVisionBackends(): List<VisionBackendConfig> {
-        val prefs = context.getSharedPreferences("vision_config", Context.MODE_PRIVATE)
-        val json = prefs.getString("backends", null)
-        
-        if (json != null) {
-            try {
-                val array = JSONArray(json)
-                val list = mutableListOf<VisionBackendConfig>()
-                for (i in 0 until array.length()) {
-                    val obj = array.getJSONObject(i)
-                    val config = VisionBackendConfig(
-                        name = obj.getString("name"),
-                        apiKey = obj.getString("apiKey"),
-                        baseUrl = obj.getString("baseUrl"),
-                        model = obj.getString("model"),
-                        enabled = obj.optBoolean("enabled", true)
-                    )
-                    if (config.enabled && config.apiKey.isNotEmpty()) {
-                        list.add(config)
-                    }
-                }
-                return list
-            } catch (e: Exception) {
-                Log.e(TAG, "解析视觉配置失败", e)
-            }
-        }
-        
-        // 返回默认配置：百炼 + Groq占位
-        return listOf(
-            VisionBackendConfig(
-                name = "qwen",
-                apiKey = prefs.getString("qwen_key", "") ?: "",
-                baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1",
-                model = "qwen-vl-max",
-                enabled = true
-            )
-        ).filter { it.apiKey.isNotEmpty() }
-    }
-    
-    private suspend fun callVisionModel(
-        config: VisionBackendConfig,
-        base64Image: String,
-        prompt: String
-    ): String = withContext(Dispatchers.IO) {
-        val json = JSONObject().apply {
-            put("model", config.model)
-            put("messages", JSONArray().apply {
-                put(JSONObject().apply {
-                    put("role", "user")
-                    put("content", JSONArray().apply {
-                        put(JSONObject().apply {
-                            put("type", "text")
-                            put("text", prompt)
-                        })
-                        put(JSONObject().apply {
-                            put("type", "image_url")
-                            put("image_url", JSONObject().apply {
-                                put("url", "data:image/jpeg;base64,$base64Image")
-                            })
-                        })
-                    })
-                })
-            })
-        }
-        
-        val request = Request.Builder()
-            .url("${config.baseUrl}/chat/completions")
-            .addHeader("Authorization", "Bearer ${config.apiKey}")
-            .post(json.toString().toRequestBody("application/json".toMediaType()))
-            .build()
-        
-        val response = httpClient.newCall(request).execute()
-        if (!response.isSuccessful) {
-            throw Exception("视觉API失败: ${response.code}")
-        }
-        
-        val result = JSONObject(response.body?.string() ?: "{}")
-        return@withContext result.optJSONArray("choices")
-            ?.optJSONObject(0)
-            ?.optJSONObject("message")
-            ?.optString("content") ?: ""
-    }
-    
-    private fun parseAssessment(json: String): CompanionAssessment? {
+
+    // ========== _thumb: JPEG → 32x32 灰度 (line 78-86) ==========
+    private fun toGrayThumb(jpeg: ByteArray): FloatArray? {
+        // 对应 vision.py _thumb (line 78-86)
+        // Python: Image.open(io.BytesIO(jpeg)).convert("L").resize((32, 32))
+        // Kotlin: BitmapFactory → createScaledBitmap → 手动灰度
         return try {
-            // 提取JSON（可能被markdown包裹）
-            val cleaned = json.trim()
-                .removePrefix("```json")
-                .removePrefix("```")
-                .removeSuffix("```")
-                .trim()
-            
-            val obj = JSONObject(cleaned)
-            CompanionAssessment(
-                present = obj.optBoolean("present", false),
-                activity = obj.optString("activity", ""),
-                notable = obj.optString("notable", "")
-            )
+            val options = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
+            val bitmap = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size, options) ?: return null
+            val scaled = Bitmap.createScaledBitmap(bitmap, 32, 32, true)
+            bitmap.recycle()
+
+            val pixels = IntArray(32 * 32)
+            scaled.getPixels(pixels, 0, 32, 0, 0, 32, 32)
+            scaled.recycle()
+
+            // np.asarray(im, dtype="float32") / 255.0
+            FloatArray(pixels.size) { i ->
+                val p = pixels[i]
+                val r = (p shr 16) and 0xFF
+                val g = (p shr 8) and 0xFF
+                val b = p and 0xFF
+                // PIL convert("L") 公式：L = 0.299*R + 0.587*G + 0.114*B
+                (0.299f * r + 0.587f * g + 0.114f * b) / 255f
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "解析陪伴模式JSON失败: $json", e)
+            // 对应 except Exception: return None (line 85-86)
+            Log.w(TAG, "缩图失败", e)
             null
         }
     }
-    
-    /**
-     * 计算32×32灰度缩略图的哈希（pai-voice _thumb 函数）
-     */
-    private fun computeThumbnailHash(jpeg: ByteArray): String {
-        val bitmap = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size)
-        val thumbnail = Bitmap.createScaledBitmap(bitmap, THUMBNAIL_SIZE, THUMBNAIL_SIZE, true)
-        
-        val hash = StringBuilder()
-        for (y in 0 until THUMBNAIL_SIZE) {
-            for (x in 0 until THUMBNAIL_SIZE) {
-                val pixel = thumbnail.getPixel(x, y)
-                val gray = (Color.red(pixel) + Color.green(pixel) + Color.blue(pixel)) / 3
-                hash.append(if (gray > 128) '1' else '0')
-            }
+
+    // ========== changed (line 100-107) ==========
+    fun changed(jpeg: ByteArray, threshold: Float = DIFF_THRESHOLD): Boolean {
+        val t = toGrayThumb(jpeg)
+        if (t == null) return true                         // (line 102-103)
+        val prev = _lastThumb
+        _lastThumb = t                                     // (line 104) prev, self._last_thumb = self._last_thumb, t
+        if (prev == null) return true                      // (line 105-106)
+        if (prev.size != t.size) return true
+        // float(abs(t - prev).mean()) >= threshold        // (line 107)
+        var sum = 0f
+        for (i in t.indices) {
+            sum += abs(t[i] - prev[i])
         }
-        
-        bitmap.recycle()
-        thumbnail.recycle()
-        
-        return hash.toString()
+        return (sum / t.size) >= threshold
     }
-    
-    /**
-     * 计算两个二进制串的汉明距离（不同位数）
-     */
-    private fun hammingDistance(hash1: String, hash2: String): Int {
-        if (hash1.length != hash2.length) return Int.MAX_VALUE
-        return hash1.zip(hash2).count { (a, b) -> a != b }
+
+    // ========== should_describe (line 109-115) ==========
+    fun shouldDescribe(jpeg: ByteArray): Boolean {
+        if (!enabled || busy) return false                 // (line 110-111)
+        val now = System.currentTimeMillis()
+        if (now - _lastDescAt < MIN_INTERVAL) {            // (line 112)
+            changed(jpeg)                                  // (line 113) 间隔内也更新基线
+            return false                                   // (line 114)
+        }
+        return changed(jpeg)                               // (line 115)
+    }
+
+    // ========== describe (line 117-119) ==========
+    suspend fun describe(jpeg: ByteArray): String? {
+        return run(jpeg, PROMPT)
+    }
+
+    // ========== assess + parse_assessment (line 121-128 + line 48-60) ==========
+    data class Assessment(
+        val present: Boolean = true,
+        val activity: String = "",
+        val notable: String = ""
+    )
+
+    suspend fun assess(jpeg: ByteArray): Assessment? {
+        val raw = run(jpeg, COMPANION_PROMPT)               // (line 123)
+        if (raw == null) return null                        // (line 124-125)
+        val d = parseAssessment(raw)                        // (line 126)
+        // (line 127) self.last_observation = d["activity"] or ("画面里没人" if not d["present"] else None)
+        lastObservation = d.activity.ifBlank {
+            if (!d.present) "画面里没人" else null
+        }
+        return d                                            // (line 128)
+    }
+
+    /** 对应 parse_assessment (line 48-60) */
+    private fun parseAssessment(text: String): Assessment {
+        // 解模型回的那行 JSON；解不出就当"在、看不清"，不打扰。(line 49)
+        val m = Regex("\\{.*\\}", RegexOption.DOT_MATCHES_ALL).find(text)
+        if (m != null) {
+            try {
+                val d = JSONObject(m.value)
+                return Assessment(
+                    present = d.optBoolean("present", true),              // (line 55)
+                    activity = (d.optString("activity") ?: "").trim().take(40), // (line 56)
+                    notable = (d.optString("notable") ?: "").trim().take(40)   // (line 57)
+                )
+            } catch (_: Exception) { /* (line 58-59) pass */ }
+        }
+        // (line 60) return {"present": True, "activity": (text or "").strip()[:40], "notable": ""}
+        return Assessment(present = true, activity = text.trim().take(40), notable = "")
+    }
+
+    // ========== _run: 多后端 fallback + 整轮超时 (line 130-157) ==========
+    private suspend fun run(jpeg: ByteArray, prompt: String): String? {
+        _lastDescAt = System.currentTimeMillis()            // (line 131)
+        if (busy) return null                               // (line 132-133)
+        busy = true                                         // (line 134)
+        val started = System.currentTimeMillis()             // (line 135)
+        try {
+            for (backend in chain) {                         // (line 137)
+                val elapsed = System.currentTimeMillis() - started
+                val left = VISION_TOTAL_TIMEOUT - elapsed    // (line 138)
+                if (left <= 1000) {                          // (line 139)
+                    Log.w(TAG, "画面描述整轮超过 ${VISION_TOTAL_TIMEOUT/1000}s，这帧丢掉") // (line 140)
+                    return null                              // (line 141)
+                }
+                val timeoutMs = minOf(VISION_TIMEOUT, left)  // (line 143) min(VISION_TIMEOUT, left)
+                try {
+                    // asyncio.wait_for(self._describe(...), timeout=...) (line 143)
+                    val desc = withTimeoutOrNull(timeoutMs) {
+                        describeWithBackend(jpeg, backend, prompt)
+                    }
+                    if (desc == null) {
+                        // TimeoutError (line 144-146)
+                        Log.w(TAG, "画面描述 ${backend.name} 超过 ${VISION_TIMEOUT/1000}s，换下一家")
+                        continue
+                    }
+                    val trimmed = desc.trim()                // (line 150)
+                    if (trimmed.isNotBlank()) {               // (line 151)
+                        lastObservation = trimmed             // (line 152)
+                        lastBackend = backend.name            // (line 153)
+                        return trimmed                        // (line 154)
+                    }
+                } catch (e: Exception) {
+                    // (line 147-149) except Exception as e: log.warning; continue
+                    Log.w(TAG, "画面描述 ${backend.name} 失败：${e.message}，换下一家")
+                    continue
+                }
+            }
+            return null                                      // (line 155)
+        } finally {
+            busy = false                                     // (line 157)
+        }
+    }
+
+    // ========== _describe: 单个后端调用 (line 159-176) ==========
+    private suspend fun describeWithBackend(
+        jpeg: ByteArray,
+        backend: VisionBackend,
+        prompt: String
+    ): String = withContext(Dispatchers.IO) {
+        val b64 = Base64.encodeToString(jpeg, Base64.NO_WRAP) // (line 160)
+        // (line 161-168) body = {model, max_tokens, messages: [{role: user, content: [text, image_url]}]}
+        val content = JSONArray().apply {
+            put(JSONObject().put("type", "text").put("text", prompt))
+            put(JSONObject().put("type", "image_url").put("image_url",
+                JSONObject().put("url", "data:image/jpeg;base64,$b64")))
+        }
+        val messages = JSONArray().apply {
+            put(JSONObject().put("role", "user").put("content", content))
+        }
+        val body = JSONObject().apply {
+            put("model", backend.model)
+            put("max_tokens", 600)
+            put("messages", messages)
+        }
+
+        // (line 169-172) session.post(f"{backend['base']}/chat/completions", ...)
+        val request = Request.Builder()
+            .url("${backend.baseUrl.trimEnd('/')}/chat/completions")
+            .addHeader("Authorization", "Bearer ${backend.apiKey}")
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+
+        val response = httpClient.newCall(request).execute()
+        val data = JSONObject(response.body?.string() ?: "{}")
+        if (!response.isSuccessful) {                        // (line 174)
+            throw RuntimeException(data.toString().take(200)) // (line 175)
+        }
+        // (line 176) data["choices"][0]["message"]["content"]
+        data.getJSONArray("choices")
+            .getJSONObject(0)
+            .getJSONObject("message")
+            .getString("content")
     }
 }
-
-// ========== 数据类 ==========
-
-data class VisionBackendConfig(
-    val name: String,
-    val apiKey: String,
-    val baseUrl: String,
-    val model: String,
-    val enabled: Boolean = true
-)
-
-data class CompanionAssessment(
-    val present: Boolean,      // 画面里有没有人
-    val activity: String,      // 在做什么
-    val notable: String        // 值得搭话的小动作
-)

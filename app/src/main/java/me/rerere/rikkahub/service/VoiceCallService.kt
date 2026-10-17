@@ -6,6 +6,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.media.AudioManager
 import android.os.Binder
 import android.os.IBinder
 import android.util.Log
@@ -261,6 +262,17 @@ class VoiceCallService : Service(), KoinComponent {
     }
     
     /**
+     * 切换扬声器
+     */
+    fun toggleSpeaker() {
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val next = !_uiState.value.isSpeakerOn
+        audioManager.isSpeakerphoneOn = next
+        _uiState.update { it.copy(isSpeakerOn = next) }
+        Log.d(TAG, "扬声器状态: $next")
+    }
+    
+    /**
      * 切换视频模式
      */
     fun toggleVideoMode() {
@@ -304,7 +316,8 @@ class VoiceCallService : Service(), KoinComponent {
                             else -> it.status
                         },
                         amplitudes = it.amplitudes + state.amplitude,
-                        isMuted = state.isMuted
+                        isMuted = state.isMuted,
+                        emotion = state.emotion
                     )
                 }
             }
@@ -412,33 +425,18 @@ class VoiceCallService : Service(), KoinComponent {
         
         ttsSentLength = fullText.length
         
-        // 分句处理
-        val sentences = newText.split(Regex("[。！？\n]+")).filter { it.isNotBlank() }
-        
-        for (sentence in sentences) {
-            val trimmed = sentence.trim()
-            if (trimmed.isEmpty()) continue
-            
-            // 检查是否是独白（不播放TTS）
-            val isMonologue = trimmed.startsWith("[独白]") || trimmed.startsWith("[") && trimmed.contains("独白")
-            
-            val displayText = trimmed.removePrefix("[独白]").trim()
-            
-            // 添加到对话记录
-            val dialogue = DialogueLine(
-                speaker = "assistant",
-                text = displayText,
-                timestamp = System.currentTimeMillis()
-            )
-            dialogueLines.add(dialogue)
-            updateDialogueUI()
-            
-            // 播放TTS（独白除外）
-            if (!isMonologue) {
-                voiceManager?.setThinking(false)
-                voiceManager?.speak(displayText, generation)
-            }
-        }
+        // 添加到对话记录
+        val dialogue = DialogueLine(
+            speaker = "assistant",
+            text = newText,
+            timestamp = System.currentTimeMillis()
+        )
+        dialogueLines.add(dialogue)
+        updateDialogueUI()
+
+        // 流式播放TTS
+        voiceManager?.setThinking(false)
+        voiceManager?.speakStreaming(newText, generation)
         
         // 检查是否有排队的用户输入
         if (_uiState.value.status == VoiceCallStatus.Listening) {

@@ -36,6 +36,8 @@ data class VoiceCallUiState(
     val callDurationSeconds: Int = 0,
     val dialogue: List<DialogueLine> = emptyList(),
     val queuedMessages: Int = 0,
+    // 实时 ASR 返回的用户情绪，供 UI 与心潮集成使用
+    val emotion: String = "neutral",
     // 视频相关
     val videoMode: VideoMode = VideoMode.Off,
     val isFrontCamera: Boolean = true,

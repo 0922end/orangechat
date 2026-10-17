@@ -371,8 +371,8 @@ fun VoiceCallPage(conversationId: Uuid, onBack: () -> Unit) {
                     CallBtn(
                         HugeIcons.VolumeHigh, 
                         "扬声器", 
-                        {}, 
-                        Color.White.copy(alpha = 0.15f), 
+                        { boundService?.toggleSpeaker() }, 
+                        if (uiState.isSpeakerOn) Color.White.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.15f), 
                         Color.White, 
                         boundService != null
                     )
