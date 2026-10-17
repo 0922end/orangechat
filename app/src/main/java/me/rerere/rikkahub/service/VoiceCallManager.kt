@@ -14,6 +14,7 @@ import me.rerere.rikkahub.service.SentenceSplitter
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Base64
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -541,11 +542,12 @@ class VoiceCallManager(
         private fun configureSession(socket: WebSocket) {
             val turnDetection = JSONObject()
                 .put("type", "server_vad")
-                .put("threshold", 0.2)
+                .put("threshold", 0.5)
                 .put("silence_duration_ms", 800)
             val session = JSONObject()
                 .put("input_audio_format", "pcm")
                 .put("sample_rate", 16000)
+                .put("modalities", JSONArray().put("text"))
                 .put("turn_detection", turnDetection)
             val update = JSONObject()
                 .put("event_id", "event_${System.nanoTime()}")
