@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit
 
 class AsrClient(
     private val apiKey: String,
-    private val wsUrl: String = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=qwen3-asr-flash-realtime",
+    private val wsUrl: String = "wss://ws-j0d35q9jai174ox1.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime?model=qwen3-asr-flash-realtime",
     private val vadThreshold: Float = 0.5f,
     private val silenceDurationMs: Int = 800
 ) {
