@@ -435,7 +435,7 @@ class VoiceCallManager(
     ) {
         companion object {
             const val DEFAULT_URL =
-                "wss://ws-j0d35q9jai174ox1.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime" +
+                "wss://ws-j0d35q9jai174ox1.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference" +
                     "?model=qwen3-asr-flash-realtime"
 
             // 该实时 ASR 端点使用独立的 MaaS API Key。
