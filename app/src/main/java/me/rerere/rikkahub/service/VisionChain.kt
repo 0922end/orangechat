@@ -40,6 +40,11 @@ class VisionChain(
         const val DIFF_THRESHOLD = 0.06f          // 32x32 灰度平均像素差阈值 (line 32)
         const val MIN_INTERVAL = 8_000L           // 最小描述间隔（毫秒）(line 33)
 
+        // 陪伴模式状态机 (line 111-115)
+        const val COMP_ABSENT_SECS = 120           // 走开多久算离开（秒）
+        const val COMP_NUDGE_COOLDOWN = 120        // 离开/回来/小动作共用的冷却（秒）
+        const val COMP_STILL_SECS = 1800           // 多久没动静提醒一次（秒）
+
         // 实时模式提示词 (line 34-37)
         const val PROMPT = "这是视频通话时从对方摄像头里抽的一帧。用中文、两句话以内描述你看到的：对方在哪、在做什么、表情和状态、有没有值得一提的细节。只描述，不评价，不打招呼，不加前缀。"
 
@@ -265,5 +270,79 @@ class VisionChain(
             .getJSONObject(0)
             .getJSONObject("message")
             .getString("content")
+    }
+
+    // ========== 陪伴模式状态机（对应 Call.comp + companion_frame，line 158-163 + 180-223）==========
+    // 对应 Call.comp 字段 (line 159-162)
+    private var compPresent: Boolean? = null          // (line 160)
+    private var compAbsentSince: Double = 0.0         // (line 161)
+    private var compLeftReported: Boolean = false     // (line 162)
+    private var compLastNudge: Double = 0.0           // (line 163)
+    private var compStillSince: Double = System.currentTimeMillis() / 1000.0 // (line 164)
+    private var compReminders: Int = 0                // (line 165)
+
+    /** 对应 Call.companion_reset (line 167-170) */
+    fun resetCompanionState() {
+        compPresent = null
+        compAbsentSince = 0.0
+        compLeftReported = false
+        compLastNudge = 0.0
+        compStillSince = System.currentTimeMillis() / 1000.0
+        compReminders = 0
+    }
+
+    /**
+     * 陪伴模式状态机：每帧评估后调用一次，需要开口时返回中文提示，否则返回 null。
+     * 对应 companion_frame (line 180-223)；assess 的调用由调用方完成（line 199-205 的 want 节流）。
+     */
+    fun companionStateMachine(assessment: Assessment): String? {
+        val now = System.currentTimeMillis() / 1000.0
+        // 对应内嵌 nudge() (line 183-186)：记冷却与"有动静"时间，并返回要注入的文案
+        fun nudge(kind: String, text: String): String {
+            Log.d(TAG, "companion[$kind] $text")
+            compLastNudge = now
+            compStillSince = now
+            return text
+        }
+
+        val was = compPresent                              // (line 206)
+        compPresent = assessment.present                   // (line 207)
+
+        if (!assessment.present) {                         // (line 208)
+            if (compAbsentSince == 0.0) {                  // (line 209)
+                compAbsentSince = now
+            } else if (!compLeftReported && now - compAbsentSince >= COMP_ABSENT_SECS) { // (line 210)
+                compLeftReported = true
+                val mins = ((now - compAbsentSince) / 60).toInt() // (line 212)
+                return nudge("left", "对方离开座位 $mins 分钟了，画面里没人")
+            }
+            return null                                    // (line 215)
+        }
+
+        if (was == false && compLeftReported) {            // (line 216)
+            compAbsentSince = 0.0
+            compLeftReported = false
+            val activity = assessment.activity
+            return nudge("back", "对方回来了" + if (activity.isNotEmpty()) "，$activity" else "")
+        }
+        compAbsentSince = 0.0                              // (line 219)
+        compLeftReported = false
+        if (assessment.notable.isNotEmpty() && now - compLastNudge >= COMP_NUDGE_COOLDOWN) { // (line 220)
+            val activity = assessment.activity
+            return nudge(
+                "gesture",
+                "对方${assessment.notable}" + if (activity.isNotEmpty()) "，现在$activity" else ""
+            )
+        }
+
+        // (line 221-223)
+        if (compPresent == true && now - compStillSince >= COMP_STILL_SECS &&
+            now - compLastNudge >= COMP_NUDGE_COOLDOWN
+        ) {
+            compReminders += 1
+            val tip = if (compReminders % 2 == 0) "站起来活动一下" else "喝口水"
+            return nudge("still", "对方已经 ${COMP_STILL_SECS / 60} 分钟没什么动静了，一直在座位上；提醒$tip")
+        }
+        return null
     }
 }
