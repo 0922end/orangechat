@@ -93,6 +93,21 @@ class VoiceCallService : Service(), KoinComponent {
         fun getService(): VoiceCallService = this@VoiceCallService
     }
     
+    private var dbgId = 9700
+    private fun dbg(title: String, msg: String) {
+        try {
+            val nm = getSystemService(android.app.NotificationManager::class.java)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                nm.createNotificationChannel(android.app.NotificationChannel("vcs_debug", "VCS Debug", android.app.NotificationManager.IMPORTANCE_HIGH))
+            }
+            nm.notify(dbgId++, NotificationCompat.Builder(this, "vcs_debug")
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle(title).setContentText(msg)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(msg))
+                .setPriority(NotificationCompat.PRIORITY_HIGH).build())
+        } catch (e: Exception) { Log.e(TAG, "dbg: " + e.message) }
+    }
+
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "Service创建")
@@ -382,6 +397,7 @@ class VoiceCallService : Service(), KoinComponent {
         // 设置思考状态
         voiceManager?.setThinking(true)
         
+        dbg("USER INPUT", "gen=" + generation + " text=" + text)
         Log.d(TAG, "处理用户输入 (generation=$generation): $text")
     }
     
@@ -407,6 +423,7 @@ class VoiceCallService : Service(), KoinComponent {
                 
                 // 检查是否已经处理过
                 if (text == lastAssistantText) return@collect
+                dbg("MONITOR", "new assistant text len=" + text.length + " preview=" + text.take(50))
                 lastAssistantText = text
                 
                 // 处理助手回复
@@ -416,6 +433,7 @@ class VoiceCallService : Service(), KoinComponent {
     }
     
     private suspend fun handleAssistantResponse(fullText: String) {
+        dbg("ASSISTANT", "handleResponse len=" + fullText.length + " text=" + fullText.take(80))
         // 只处理新增的部分
         val newText = if (ttsSentLength < fullText.length) {
             fullText.substring(ttsSentLength)
@@ -436,6 +454,7 @@ class VoiceCallService : Service(), KoinComponent {
 
         // 流式播放TTS
         voiceManager?.setThinking(false)
+        dbg("SPEAK", "speakStreaming gen=" + generation + " text=" + newText.take(60))
         voiceManager?.speakStreaming(newText, generation)
         
         // 检查是否有排队的用户输入
