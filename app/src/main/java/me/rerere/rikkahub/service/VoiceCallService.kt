@@ -387,6 +387,9 @@ class VoiceCallService : Service(), KoinComponent {
     
     private suspend fun processUserInput(text: String) {
         generation++
+        ttsSentLength = 0
+        lastAssistantText = ""
+        dbg("RESET", "gen=" + generation + " ttsSentLength=0 lastAssistantText cleared")
         
         // 发送给ChatService
         chatService.sendMessage(
@@ -461,6 +464,8 @@ class VoiceCallService : Service(), KoinComponent {
         if (_uiState.value.status == VoiceCallStatus.Listening) {
             val pending = pendingQueue.poll()
             if (pending != null) {
+                ttsSentLength = 0
+                lastAssistantText = ""
                 Log.d(TAG, "处理排队的用户输入: $pending")
                 processUserInput(pending)
             }
