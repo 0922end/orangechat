@@ -118,20 +118,7 @@ class VoiceCallService : Service(), KoinComponent {
             try {
                 customTtsState = createCustomTtsState(this@VoiceCallService, settingsStore)
                 dbg("TTS_INIT", "customTtsState created OK")
-                // Monitor TTS speaking state: pause/resume ASR to prevent echo
-                customTtsState?.isSpeaking?.let { speakingFlow ->
-                    serviceScope.launch {
-                        speakingFlow.collect { speaking ->
-                            if (speaking) {
-                                voiceManager?.pauseRecording()
-                                dbg("ECHO", "TTS speaking -> pause ASR")
-                            } else {
-                                voiceManager?.resumeRecording()
-                                dbg("ECHO", "TTS done -> resume ASR")
-                            }
-                        }
-                    }
-                }
+                // TTS echo suppression is handled inside VoiceCallManager
             } catch (e: Exception) {
                 dbg("TTS_INIT", "FAILED: " + e.message)
             }
@@ -414,7 +401,6 @@ class VoiceCallService : Service(), KoinComponent {
     
     private suspend fun processUserInput(text: String) {
         generation++
-        customTtsState?.stop()
         ttsSentLength = 0
         lastAssistantText = ""
         dbg("RESET", "gen=" + generation + " ttsSentLength=0 lastAssistantText cleared")
@@ -488,8 +474,8 @@ class VoiceCallService : Service(), KoinComponent {
 
         // 流式播放TTS
         voiceManager?.setThinking(false)
-        dbg("SPEAK", "enqueueText len=" + newText.length + " text=" + newText.take(60))
-        customTtsState?.enqueueText(newText)
+        dbg("SPEAK", "speakStreaming len=" + newText.length + " text=" + newText.take(60))
+        voiceManager?.speakStreaming(newText, generation)
         
         // 检查是否有排队的用户输入
         if (_uiState.value.status == VoiceCallStatus.Listening) {
