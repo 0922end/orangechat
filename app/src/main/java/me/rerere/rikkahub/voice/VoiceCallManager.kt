@@ -270,6 +270,7 @@ class VoiceCallManager(
      * 用 SentenceSplitter 流式分句，每句独立调 TTS。
      */
     suspend fun speakStreaming(fullText: String, generation: Int) {
+        if (fullText.isBlank()) return
         if (generation < currentGeneration) {
             Log.d(TAG, "Old generation=$generation, current=$currentGeneration, skip")
             return
