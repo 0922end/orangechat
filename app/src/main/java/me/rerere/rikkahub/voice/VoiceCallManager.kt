@@ -9,6 +9,10 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.os.Build
+import androidx.core.app.NotificationCompat
 
 private const val TAG = "VoiceCallManager"
 
@@ -48,6 +52,25 @@ class VoiceCallManager(
     private val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
     private val CHUNK_SAMPLES = 320  // ~20ms @16kHz
 
+    // ========== DEBUG ==========
+    private var debugId = 9900
+    private fun debugNotify(title: String, msg: String) {
+        try {
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                nm.createNotificationChannel(NotificationChannel("voice_debug", "Voice Debug", NotificationManager.IMPORTANCE_HIGH))
+            }
+            val n = NotificationCompat.Builder(context, "voice_debug")
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle(title)
+                .setContentText(msg)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(msg))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .build()
+            nm.notify(debugId++, n)
+        } catch (e: Exception) { Log.e(TAG, "debugNotify fail: " + e.message) }
+    }
+
     private var asrApiKey = ""
     private var elevenLabsApiKey = ""
     private var elevenLabsVoiceId = ""
@@ -79,6 +102,7 @@ class VoiceCallManager(
         }
         elevenLabsApiKey = elevenKey
         elevenLabsVoiceId = voiceId
+        debugNotify("configure", "asrKey=" + asrApiKey.take(20) + "... elevenKey=" + elevenLabsApiKey.take(10) + "... voiceId=" + elevenLabsVoiceId.take(10))
     }
 
     suspend fun startCall() = withContext(Dispatchers.IO) {
@@ -88,10 +112,14 @@ class VoiceCallManager(
 
             // 初始化 ASR
             if (asrApiKey.isNotBlank()) {
+                debugNotify("ASR init", "key=" + asrApiKey.take(20) + "...")
                 asr = AsrClient(apiKey = asrApiKey).also { it.connect() }
+            } else {
+                debugNotify("ASR SKIP", "asrApiKey is BLANK!")
             }
 
             // 初始化 TTS
+            debugNotify("TTS init", "key=" + elevenLabsApiKey.take(10) + "... voice=" + elevenLabsVoiceId)
             if (elevenLabsApiKey.isNotBlank() && elevenLabsVoiceId.isNotBlank()) {
                 tts = TtsPlayer(
                     apiKey = elevenLabsApiKey,
@@ -106,6 +134,7 @@ class VoiceCallManager(
                 }
 
                 override fun onSpeechStart(barge: Boolean) {
+                    debugNotify("VAD", "speechStart barge=" + barge.toString())
                     if (barge) {
                         Log.i(TAG, "Barge-in! Stopping playback")
                         tts?.stopPlayback()
@@ -115,6 +144,7 @@ class VoiceCallManager(
                 }
 
                 override fun onSpeechEnd() {
+                    debugNotify("VAD", "speechEnd -> commitAudioBuffer")
                     asr?.commitAudioBuffer()
                     updateState { it.copy(isListening = true) }
                 }
@@ -160,7 +190,7 @@ class VoiceCallManager(
                         is AsrClient.AsrEvent.Partial -> {
                             // 实时字幕，暂不处理
                         }
-                        is AsrClient.AsrEvent.Connected -> Log.i(TAG, "ASR connected")
+                        is AsrClient.AsrEvent.Connected -> { debugNotify("ASR", "Connected!"); Log.i(TAG, "ASR connected") }
                         is AsrClient.AsrEvent.Closed -> {
                             Log.w(TAG, "ASR closed: ${event.reason}")
                             // 自动重连
@@ -195,6 +225,7 @@ class VoiceCallManager(
             startAudioStreaming()
 
             updateState { VoiceCallManagerState(isActive = true, isListening = true) }
+            debugNotify("CALL STARTED", "Recording + ASR + VAD all running")
             Log.d(TAG, "Voice call started")
 
         } catch (e: Exception) {
