@@ -18,7 +18,7 @@ class TtsPlayer(
     private val apiKey: String,
     private val voiceId: String,
     private val modelId: String = "eleven_v3",
-    private val sampleRate: Int = 44100,
+    private val sampleRate: Int = 16000,
     private val stability: Float = 0.30f,
     private val similarityBoost: Float = 0.75f
 ) {
@@ -54,7 +54,7 @@ class TtsPlayer(
                     put("text", fullText); put("model_id", modelId)
                     put("voice_settings", JSONObject().apply { put("stability", stability.toDouble()); put("similarity_boost", similarityBoost.toDouble()) })
                 }.toString().toRequestBody("application/json".toMediaType())
-                val request = Request.Builder().url("https://api.elevenlabs.io/v1/text-to-speech/$voiceId/stream").header("xi-api-key", apiKey).header("Accept", "audio/mpeg").post(body).build()
+                val request = Request.Builder().url("https://api.elevenlabs.io/v1/text-to-speech/$voiceId/stream?output_format=pcm_16000").header("xi-api-key", apiKey).header("Accept", "*/*").post(body).build()
                 val response = httpClient.newCall(request).execute()
                 if (!response.isSuccessful) { listener?.onError("TTS failed: ${response.code}"); response.close(); return@launch }
                 if (generationId.get() != currentGenId) { response.close(); return@launch }
@@ -70,9 +70,10 @@ class TtsPlayer(
                 }
                 inputStream.close(); responseBody.close()
                 if (generationId.get() != currentGenId) return@launch
-                val pcmData = decodeMp3ToPcm(mp3Buffer.toByteArray())
-                if (pcmData == null || pcmData.isEmpty()) { Log.e(TAG, "MP3 decode returned null/empty"); listener?.onError("MP3 decode failed"); return@launch }
-                Log.i(TAG, "TTS decoded " + pcmData.size + " PCM bytes, queuing...")
+                // PCM format: raw bytes are already PCM16 16kHz mono, no decode needed
+                val pcmData = mp3Buffer.toByteArray()
+                if (pcmData.isEmpty()) { listener?.onError("TTS returned empty"); return@launch }
+                Log.i(TAG, "TTS got " + pcmData.size + " PCM bytes directly, queuing...")
                 if (generationId.get() != currentGenId) return@launch
                 queue.offer(PlayItem(pcmData, currentGenId))
                 ensureDraining()
