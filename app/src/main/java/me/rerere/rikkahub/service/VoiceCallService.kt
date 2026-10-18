@@ -21,6 +21,8 @@ import me.rerere.rikkahub.RouteActivity
 import me.rerere.rikkahub.VOICE_CALL_NOTIFICATION_CHANNEL_ID
 import me.rerere.rikkahub.data.service.CameraService
 import me.rerere.rikkahub.data.datastore.SettingsStore
+import me.rerere.rikkahub.ui.hooks.CustomTtsState
+import me.rerere.rikkahub.ui.hooks.createCustomTtsState
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.ui.pages.voice.*
 import org.koin.core.component.KoinComponent
@@ -55,6 +57,7 @@ class VoiceCallService : Service(), KoinComponent {
 
     // ========== 核心模块 ==========
     private var voiceManager: VoiceCallManager? = null
+    private var customTtsState: CustomTtsState? = null
     private var visionChain: VisionChain? = null
     
     // ========== 对话管理 ==========
@@ -111,6 +114,14 @@ class VoiceCallService : Service(), KoinComponent {
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "Service创建")
+        serviceScope.launch {
+            try {
+                customTtsState = createCustomTtsState(this@VoiceCallService, settingsStore)
+                dbg("TTS_INIT", "customTtsState created OK")
+            } catch (e: Exception) {
+                dbg("TTS_INIT", "FAILED: " + e.message)
+            }
+        }
     }
     
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -145,6 +156,8 @@ class VoiceCallService : Service(), KoinComponent {
     }
     
     override fun onDestroy() {
+        customTtsState?.cleanup()
+        customTtsState = null
         super.onDestroy()
         endCall()
         serviceScope.cancel()
@@ -387,6 +400,7 @@ class VoiceCallService : Service(), KoinComponent {
     
     private suspend fun processUserInput(text: String) {
         generation++
+        customTtsState?.stop()
         ttsSentLength = 0
         lastAssistantText = ""
         dbg("RESET", "gen=" + generation + " ttsSentLength=0 lastAssistantText cleared")
@@ -460,8 +474,8 @@ class VoiceCallService : Service(), KoinComponent {
 
         // 流式播放TTS
         voiceManager?.setThinking(false)
-        dbg("SPEAK", "speakStreaming gen=" + generation + " text=" + newText.take(60))
-        voiceManager?.speakStreaming(newText, generation)
+        dbg("SPEAK", "enqueueText len=" + newText.length + " text=" + newText.take(60))
+        customTtsState?.enqueueText(newText)
         
         // 检查是否有排队的用户输入
         if (_uiState.value.status == VoiceCallStatus.Listening) {
