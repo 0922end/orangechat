@@ -101,13 +101,13 @@ class AsrClient(
     }
 
     private fun handleMessage(text: String) {
-        debugNotify("ASR RAW", text.take(200))
+        debugNotify("ASR RAW", text.take(500))
         try {
             val json = JSONObject(text)
             when (json.optString("type", "")) {
                 "session.created", "session.updated" -> { sessionConfigured = true }
-                "response.audio_transcript.done" -> { val t = json.optString("transcript", "").trim().ifBlank { json.optString("text", "").trim() }; if (t.isNotEmpty()) _events.tryEmit(AsrEvent.Transcript(t)) }
-                "response.audio_transcript.delta" -> { val d = json.optString("delta", "").trim().ifBlank { json.optString("text", "").trim() }; if (d.isNotEmpty()) _events.tryEmit(AsrEvent.Partial(d)) }
+                "conversation.item.input_audio_transcription.completed" -> { val t = json.optString("transcript", "").trim().ifBlank { json.optString("text", "").trim() }; if (t.isNotEmpty()) _events.tryEmit(AsrEvent.Transcript(t)) }
+                "conversation.item.input_audio_transcription.delta" -> { val d = json.optString("delta", "").trim().ifBlank { json.optString("text", "").trim() }; if (d.isNotEmpty()) _events.tryEmit(AsrEvent.Partial(d)) }
                 "error" -> { val msg = json.optJSONObject("error")?.optString("message", "Unknown") ?: "Unknown"; _events.tryEmit(AsrEvent.Error(msg)) }
                 else -> {}
             }
