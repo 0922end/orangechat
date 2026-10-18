@@ -2,6 +2,11 @@ package me.rerere.rikkahub.voice
 
 import android.util.Base64
 import android.util.Log
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
+import android.os.Build
+import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -11,6 +16,7 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 class AsrClient(
+    private val context: Context? = null,
     private val apiKey: String,
     private val wsUrl: String = "wss://ws-j0d35q9jai174ox1.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime?model=qwen3-asr-flash-realtime",
     private val vadThreshold: Float = 0.5f,
@@ -24,6 +30,22 @@ class AsrClient(
         object Connected : AsrEvent()
         data class Closed(val reason: String) : AsrEvent()
         data class Error(val message: String) : AsrEvent()
+    }
+
+    private var debugId = 9800
+    private fun debugNotify(title: String, msg: String) {
+        val ctx = context ?: return
+        try {
+            val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                nm.createNotificationChannel(NotificationChannel("asr_debug", "ASR Debug", NotificationManager.IMPORTANCE_HIGH))
+            }
+            nm.notify(debugId++, NotificationCompat.Builder(ctx, "asr_debug")
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle(title).setContentText(msg)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(msg))
+                .setPriority(NotificationCompat.PRIORITY_HIGH).build())
+        } catch (e: Exception) { Log.e(TAG, "debugNotify: " + e.message) }
     }
 
     private val _events = MutableSharedFlow<AsrEvent>(extraBufferCapacity = 64)
@@ -51,8 +73,11 @@ class AsrClient(
     fun disconnect() { ws?.close(1000, "Client disconnect"); ws = null; isConnected = false; sessionConfigured = false }
     fun release() { disconnect(); scope.cancel() }
 
+    private var pushCount = 0
     fun pushAudio(pcm16: ShortArray) {
         if (!isConnected || !sessionConfigured) return
+        pushCount++
+        if (pushCount % 50 == 1) debugNotify("ASR push", "audio chunk #" + pushCount + " (" + pcm16.size + " samples)")
         val currentWs = ws ?: return
         val bytes = ByteArray(pcm16.size * 2)
         for (i in pcm16.indices) { bytes[i * 2] = (pcm16[i].toInt() and 0xFF).toByte(); bytes[i * 2 + 1] = (pcm16[i].toInt() shr 8 and 0xFF).toByte() }
@@ -72,10 +97,11 @@ class AsrClient(
             put("turn_detection", JSONObject().apply { put("type", "server_vad") })
         }
         val sent = webSocket.send(JSONObject().apply { put("type", "session.update"); put("session", session) }.toString())
-        if (sent) sessionConfigured = true else _events.tryEmit(AsrEvent.Error("Failed to send session config"))
+        if (sent) { sessionConfigured = true; debugNotify("ASR session", "session.update sent OK") } else _events.tryEmit(AsrEvent.Error("Failed to send session config"))
     }
 
     private fun handleMessage(text: String) {
+        debugNotify("ASR RAW", text.take(200))
         try {
             val json = JSONObject(text)
             when (json.optString("type", "")) {
