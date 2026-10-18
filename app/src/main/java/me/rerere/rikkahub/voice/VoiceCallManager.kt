@@ -13,6 +13,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import me.rerere.rikkahub.ui.hooks.CustomTtsState
 
 private const val TAG = "VoiceCallManager"
 
@@ -44,7 +45,8 @@ class VoiceCallManager(
     private val context: Context,
     private val scope: CoroutineScope,
     private val onUserSpeech: suspend (String) -> Unit,
-    private val onStatusChange: (VoiceCallManagerState) -> Unit
+    private val onStatusChange: (VoiceCallManagerState) -> Unit,
+    private val customTtsState: CustomTtsState? = null
 ) {
     // ========== 配置 ==========
     private val SAMPLE_RATE = 16000
@@ -72,16 +74,14 @@ class VoiceCallManager(
     }
 
     private var asrApiKey = ""
-    private var elevenLabsApiKey = ""
-    private var elevenLabsVoiceId = ""
+
 
     // ========== 子组件（pai-voice 算法） ==========
     private val vad = VadDetector()  // 双阈值+看门狗+温和打断
     private var asr: AsrClient? = null
-    private var tts: TtsPlayer? = null
     private val splitter = SentenceSplitter { sentence ->
-        // 流式分句回调：每句切好后立刻调 TTS
-        tts?.speak(sentence)
+        // 流式分句回调：每句切好后立刻调橘瓣自带TTS
+        customTtsState?.enqueueText(sentence)
     }
 
     // ========== 状态 ==========
@@ -94,15 +94,13 @@ class VoiceCallManager(
 
     // ========== 公开方法 ==========
 
-    fun configure(qwenKey: String, elevenKey: String, voiceId: String) {
+    fun configure(qwenKey: String, elevenKey: String = "", voiceId: String = "") {
         if (qwenKey.startsWith("sk-ws-")) {
             asrApiKey = qwenKey
         } else if (qwenKey.isNotBlank()) {
             asrApiKey = qwenKey
         }
-        elevenLabsApiKey = elevenKey
-        elevenLabsVoiceId = voiceId
-        debugNotify("configure", "asrKey=" + asrApiKey.take(20) + "... elevenKey=" + elevenLabsApiKey.take(10) + "... voiceId=" + elevenLabsVoiceId.take(10))
+        debugNotify("configure", "asrKey=" + asrApiKey.take(20) + "... TTS=builtin")
     }
 
     suspend fun startCall() = withContext(Dispatchers.IO) {
@@ -115,11 +113,7 @@ class VoiceCallManager(
                 asrApiKey = "sk-ws-H.PYIDHYY.h6nt.MEUCIQD2dc1xY0UjRZ_C-yCXHRN29V2fryDBhJBr9lYKFn-PGQIgIdLUIrZ3zbe3AVB0Hw7E3SUWPE63xEwp7Rp8rXbr3lo"
                 debugNotify("KEY FALLBACK", "Using hardcoded ASR key")
             }
-            if (elevenLabsApiKey.isBlank()) {
-                elevenLabsApiKey = "sk_938fc51f4a2f36dd4d485c8b2d85a8784a20d0ff1dac13d1"
-                elevenLabsVoiceId = "KsN8ZS1yj0X5xlMUugje"
-                debugNotify("KEY FALLBACK", "Using hardcoded TTS key+voice")
-            }
+
 
             // 初始化 ASR
             if (asrApiKey.isNotBlank()) {
@@ -129,14 +123,7 @@ class VoiceCallManager(
                 debugNotify("ASR SKIP", "asrApiKey is BLANK!")
             }
 
-            // 初始化 TTS
-            debugNotify("TTS init", "key=" + elevenLabsApiKey.take(10) + "... voice=" + elevenLabsVoiceId)
-            if (elevenLabsApiKey.isNotBlank() && elevenLabsVoiceId.isNotBlank()) {
-                tts = TtsPlayer(
-                    apiKey = elevenLabsApiKey,
-                    voiceId = elevenLabsVoiceId
-                )
-            }
+            debugNotify("TTS init", "using builtin CustomTtsState")
 
             // 设置 VAD 回调
             vad.listener = object : VadDetector.Listener {
@@ -148,7 +135,7 @@ class VoiceCallManager(
                     debugNotify("VAD", "speechStart barge=" + barge.toString())
                     if (barge) {
                         Log.i(TAG, "Barge-in! Stopping playback")
-                        tts?.stopPlayback()
+                        customTtsState?.stop()
                         asr?.clearAudioBuffer()
                     }
                     updateState { it.copy(isListening = true, isSpeaking = false) }
@@ -161,30 +148,20 @@ class VoiceCallManager(
                 }
             }
 
-            // 设置 TTS 回调
-            tts?.listener = object : TtsPlayer.Listener {
-                override fun onPlaybackStart() {
-                    vad.isAiPlaying = true
-                    vad.aiMode = "speaking"
-                    updateState { it.copy(isSpeaking = true, isThinking = false) }
-                }
-
-                override fun onPlaybackEnd() {
-                    vad.isAiPlaying = false
-                    vad.aiMode = "listening"
-                    updateState { it.copy(isSpeaking = false, isListening = true) }
-                }
-
-                override fun onPlaybackLevel(rms: Float) {
-                    // TTS 播放音量可选用于 UI
-                }
-
-                override fun onLatency(ms: Long) {
-                    Log.i(TAG, "TTS first chunk latency: ${ms}ms")
-                }
-
-                override fun onError(message: String) {
-                    Log.e(TAG, "TTS error: $message")
+            // 监听橘瓣自带TTS播放状态，控制温和打断
+            customTtsState?.isSpeaking?.let { speakingFlow ->
+                scope.launch {
+                    speakingFlow.collect { speaking ->
+                        if (speaking) {
+                            vad.isAiPlaying = true
+                            vad.aiMode = "speaking"
+                            updateState { it.copy(isSpeaking = true, isThinking = false) }
+                        } else {
+                            vad.isAiPlaying = false
+                            vad.aiMode = "listening"
+                            updateState { it.copy(isSpeaking = false, isListening = true) }
+                        }
+                    }
                 }
             }
 
@@ -250,7 +227,7 @@ class VoiceCallManager(
         audioStreamJob = null
 
         asr?.disconnect()
-        tts?.stopPlayback()
+        customTtsState?.stop()
 
         try {
             audioRecord?.stop()
@@ -276,7 +253,7 @@ class VoiceCallManager(
             return
         }
         currentGeneration = generation
-        tts?.newGeneration()
+        customTtsState?.stop()
         splitter.reset()
 
         updateState { it.copy(isSpeaking = true, isThinking = false) }
