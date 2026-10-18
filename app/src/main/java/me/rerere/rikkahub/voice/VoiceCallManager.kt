@@ -124,7 +124,7 @@ class VoiceCallManager(
             // 初始化 ASR
             if (asrApiKey.isNotBlank()) {
                 debugNotify("ASR init", "key=" + asrApiKey.take(20) + "...")
-                asr = AsrClient(apiKey = asrApiKey).also { it.connect() }
+                asr = AsrClient(context = context, apiKey = asrApiKey).also { it.connect() }
             } else {
                 debugNotify("ASR SKIP", "asrApiKey is BLANK!")
             }
