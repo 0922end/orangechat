@@ -43,6 +43,7 @@ class TtsPlayer(
 
     fun speak(text: String, emotionTags: String = "") {
         if (text.isBlank()) return
+        Log.i(TAG, "TTS speak called: " + text.take(50))
         val currentGenId = generationId.get()
         val fullText = if (emotionTags.isNotBlank()) "$emotionTags $text" else text
         scope.launch {
@@ -70,7 +71,8 @@ class TtsPlayer(
                 inputStream.close(); responseBody.close()
                 if (generationId.get() != currentGenId) return@launch
                 val pcmData = decodeMp3ToPcm(mp3Buffer.toByteArray())
-                if (pcmData == null || pcmData.isEmpty()) { listener?.onError("MP3 decode failed"); return@launch }
+                if (pcmData == null || pcmData.isEmpty()) { Log.e(TAG, "MP3 decode returned null/empty"); listener?.onError("MP3 decode failed"); return@launch }
+                Log.i(TAG, "TTS decoded " + pcmData.size + " PCM bytes, queuing...")
                 if (generationId.get() != currentGenId) return@launch
                 queue.offer(PlayItem(pcmData, currentGenId))
                 ensureDraining()
