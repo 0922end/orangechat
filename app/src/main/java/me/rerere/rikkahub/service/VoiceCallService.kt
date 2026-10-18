@@ -436,7 +436,7 @@ class VoiceCallService : Service(), KoinComponent {
     }
     
     private suspend fun handleAssistantResponse(fullText: String) {
-        dbg("ASSISTANT", "handleResponse len=" + fullText.length + " text=" + fullText.take(80))
+        dbg("ASSISTANT", "handleResponse len=" + fullText.length + " sent=" + ttsSentLength + " text=" + fullText.take(80))
         // 只处理新增的部分
         val newText = if (ttsSentLength < fullText.length) {
             fullText.substring(ttsSentLength)
@@ -446,13 +446,16 @@ class VoiceCallService : Service(), KoinComponent {
         
         ttsSentLength = fullText.length
         
-        // 添加到对话记录
-        val dialogue = DialogueLine(
-            speaker = "assistant",
-            text = newText,
-            timestamp = System.currentTimeMillis()
-        )
-        dialogueLines.add(dialogue)
+        // 更新对话记录：更新最后一条assistant行而不是每次加新行
+        val lastAssistant = dialogueLines.lastOrNull { it.speaker == "assistant" }
+        if (lastAssistant != null && System.currentTimeMillis() - lastAssistant.timestamp < 10000) {
+            // 10秒内的同一轮回复，更新文字
+            val idx = dialogueLines.lastIndexOf(lastAssistant)
+            dialogueLines[idx] = lastAssistant.copy(text = fullText)
+        } else {
+            // 新一轮回复
+            dialogueLines.add(DialogueLine(speaker = "assistant", text = fullText, timestamp = System.currentTimeMillis()))
+        }
         updateDialogueUI()
 
         // 流式播放TTS
