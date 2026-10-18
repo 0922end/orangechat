@@ -118,6 +118,20 @@ class VoiceCallService : Service(), KoinComponent {
             try {
                 customTtsState = createCustomTtsState(this@VoiceCallService, settingsStore)
                 dbg("TTS_INIT", "customTtsState created OK")
+                // Monitor TTS speaking state: pause/resume ASR to prevent echo
+                customTtsState?.isSpeaking?.let { speakingFlow ->
+                    serviceScope.launch {
+                        speakingFlow.collect { speaking ->
+                            if (speaking) {
+                                voiceManager?.pauseRecording()
+                                dbg("ECHO", "TTS speaking -> pause ASR")
+                            } else {
+                                voiceManager?.resumeRecording()
+                                dbg("ECHO", "TTS done -> resume ASR")
+                            }
+                        }
+                    }
+                }
             } catch (e: Exception) {
                 dbg("TTS_INIT", "FAILED: " + e.message)
             }
