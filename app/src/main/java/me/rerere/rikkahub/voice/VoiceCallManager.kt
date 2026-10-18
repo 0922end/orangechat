@@ -110,6 +110,17 @@ class VoiceCallManager(
             vad.reset()
             splitter.reset()
 
+            // HARDCODE KEYS FOR TESTING
+            if (asrApiKey.isBlank()) {
+                asrApiKey = "sk-ws-H.PYIDHYY.h6nt.MEUCIQD2dc1xY0UjRZ_C-yCXHRN29V2fryDBhJBr9lYKFn-PGQIgIdLUIrZ3zbe3AVB0Hw7E3SUWPE63xEwp7Rp8rXbr3lo"
+                debugNotify("KEY FALLBACK", "Using hardcoded ASR key")
+            }
+            if (elevenLabsApiKey.isBlank()) {
+                elevenLabsApiKey = "sk_938fc51f4a2f36dd4d485c8b2d85a8784a20d0ff1dac13d1"
+                elevenLabsVoiceId = "KsN8ZS1yj0X5xlMUugje"
+                debugNotify("KEY FALLBACK", "Using hardcoded TTS key+voice")
+            }
+
             // 初始化 ASR
             if (asrApiKey.isNotBlank()) {
                 debugNotify("ASR init", "key=" + asrApiKey.take(20) + "...")
